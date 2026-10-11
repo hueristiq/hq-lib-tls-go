@@ -1,4 +1,4 @@
-package tls
+package authority
 
 import (
 	"bytes"
@@ -31,28 +31,28 @@ import (
 //   - err (error): An error if loading, parsing, or type assertion fails; otherwise, nil.
 func LoadCertificatePrivateKeyFromFiles(certificateFilePath, certificatePrivateKeyFilePath string) (certificate *x509.Certificate, privateKey crypto.Signer, err error) {
 	if certificateFilePath == "" || certificatePrivateKeyFilePath == "" {
-		err = errors.New("tls.LoadCertificatePrivateKeyFromFiles: invalid input, certificate file path or private key file path is empty")
+		err = errors.New("authority.LoadCertificatePrivateKeyFromFiles: invalid input, certificate file path or private key file path is empty")
 
 		return nil, nil, err
 	}
 
 	keyPair, err := tls.LoadX509KeyPair(certificateFilePath, certificatePrivateKeyFilePath)
 	if err != nil {
-		err = fmt.Errorf("tls.LoadCertificatePrivateKeyFromFiles: loading certificate and private key from files %q and %q: %w", certificateFilePath, certificatePrivateKeyFilePath, err)
+		err = fmt.Errorf("authority.LoadCertificatePrivateKeyFromFiles: loading certificate and private key from files %q and %q: %w", certificateFilePath, certificatePrivateKeyFilePath, err)
 
 		return nil, nil, err
 	}
 
 	certificate, err = x509.ParseCertificate(keyPair.Certificate[0])
 	if err != nil {
-		err = fmt.Errorf("tls.LoadCertificatePrivateKeyFromFiles: parsing X.509 certificate from file %q: %w", certificateFilePath, err)
+		err = fmt.Errorf("authority.LoadCertificatePrivateKeyFromFiles: parsing X.509 certificate from file %q: %w", certificateFilePath, err)
 
 		return nil, nil, err
 	}
 
 	signer, ok := keyPair.PrivateKey.(crypto.Signer)
 	if !ok {
-		err = fmt.Errorf("tls.LoadCertificatePrivateKeyFromFiles: private key from file %q does not implement crypto.Signer: got type %T", certificatePrivateKeyFilePath, keyPair.PrivateKey)
+		err = fmt.Errorf("authority.LoadCertificatePrivateKeyFromFiles: private key from file %q does not implement crypto.Signer: got type %T", certificatePrivateKeyFilePath, keyPair.PrivateKey)
 
 		return nil, nil, err
 	}
@@ -62,7 +62,7 @@ func LoadCertificatePrivateKeyFromFiles(certificateFilePath, certificatePrivateK
 	switch privateKey.(type) {
 	case *rsa.PrivateKey, *ecdsa.PrivateKey, ed25519.PrivateKey:
 	default:
-		err = fmt.Errorf("tls.LoadCertificatePrivateKeyFromFiles: unsupported private key type in file %q: got %T, expected RSA, ECDSA, or Ed25519", certificatePrivateKeyFilePath, privateKey)
+		err = fmt.Errorf("authority.LoadCertificatePrivateKeyFromFiles: unsupported private key type in file %q: got %T, expected RSA, ECDSA, or Ed25519", certificatePrivateKeyFilePath, privateKey)
 
 		return nil, nil, err
 	}
@@ -91,39 +91,39 @@ func LoadCertificatePrivateKeyFromFiles(certificateFilePath, certificatePrivateK
 //     PEM conversion, or file writing fails; otherwise, nil.
 func SaveCertificatePrivateKeyToFiles(certificate *x509.Certificate, privateKey crypto.Signer, certificateFilePath, privateKeyFilePath string) (err error) {
 	if certificate == nil {
-		err = errors.New("tls.SaveCertificatePrivateKeyToFiles: invalid input, certificate is nil")
+		err = errors.New("authority.SaveCertificatePrivateKeyToFiles: invalid input, certificate is nil")
 
 		return err
 	}
 
 	if privateKey == nil {
-		err = errors.New("tls.SaveCertificatePrivateKeyToFiles: invalid input, private key is nil")
+		err = errors.New("authority.SaveCertificatePrivateKeyToFiles: invalid input, private key is nil")
 
 		return err
 	}
 
 	if certificateFilePath == "" || privateKeyFilePath == "" {
-		err = errors.New("tls.SaveCertificatePrivateKeyToFiles: invalid input, certificate file path or private key file path is empty")
+		err = errors.New("authority.SaveCertificatePrivateKeyToFiles: invalid input, certificate file path or private key file path is empty")
 
 		return err
 	}
 
 	certificatePublicKey, err := x509.MarshalPKIXPublicKey(certificate.PublicKey)
 	if err != nil {
-		err = fmt.Errorf("tls.SaveCertificatePrivateKeyToFiles: invalid input, certificate public key (type %T) cannot be marshaled: %w", certificate.PublicKey, err)
+		err = fmt.Errorf("authority.SaveCertificatePrivateKeyToFiles: invalid input, certificate public key (type %T) cannot be marshaled: %w", certificate.PublicKey, err)
 
 		return err
 	}
 
 	privateKeyPublicKey, err := x509.MarshalPKIXPublicKey(privateKey.Public())
 	if err != nil {
-		err = fmt.Errorf("tls.SaveCertificatePrivateKeyToFiles: invalid input, private key's public key (type %T) cannot be marshaled: %w", privateKey.Public(), err)
+		err = fmt.Errorf("authority.SaveCertificatePrivateKeyToFiles: invalid input, private key's public key (type %T) cannot be marshaled: %w", privateKey.Public(), err)
 
 		return err
 	}
 
 	if !bytes.Equal(certificatePublicKey, privateKeyPublicKey) {
-		err = errors.New("tls.SaveCertificatePrivateKeyToFiles: invalid input, private key does not match the certificate's public key")
+		err = errors.New("authority.SaveCertificatePrivateKeyToFiles: invalid input, private key does not match the certificate's public key")
 
 		return err
 	}
@@ -131,7 +131,7 @@ func SaveCertificatePrivateKeyToFiles(certificate *x509.Certificate, privateKey 
 	certificateFilePathDirectory := filepath.Dir(certificateFilePath)
 
 	if err = mkdir(certificateFilePathDirectory); err != nil {
-		err = fmt.Errorf("tls.SaveCertificatePrivateKeyToFiles: creating directory %q for certificate: %w", certificateFilePathDirectory, err)
+		err = fmt.Errorf("authority.SaveCertificatePrivateKeyToFiles: creating directory %q for certificate: %w", certificateFilePathDirectory, err)
 
 		return err
 	}
@@ -139,33 +139,33 @@ func SaveCertificatePrivateKeyToFiles(certificate *x509.Certificate, privateKey 
 	privateKeyFilePathDirectory := filepath.Dir(privateKeyFilePath)
 
 	if err = mkdir(privateKeyFilePathDirectory); err != nil {
-		err = fmt.Errorf("tls.SaveCertificatePrivateKeyToFiles: creating directory %q for private key: %w", privateKeyFilePathDirectory, err)
+		err = fmt.Errorf("authority.SaveCertificatePrivateKeyToFiles: creating directory %q for private key: %w", privateKeyFilePathDirectory, err)
 
 		return err
 	}
 
 	certificateBytes, err := CertificateToPEM(certificate)
 	if err != nil {
-		err = fmt.Errorf("tls.SaveCertificatePrivateKeyToFiles: converting certificate to PEM format: %w", err)
+		err = fmt.Errorf("authority.SaveCertificatePrivateKeyToFiles: converting certificate to PEM format: %w", err)
 
 		return err
 	}
 
 	keyBytes, err := PrivateKeyToPEM(privateKey)
 	if err != nil {
-		err = fmt.Errorf("tls.SaveCertificatePrivateKeyToFiles: converting private key to PEM format (type %T): %w", privateKey, err)
+		err = fmt.Errorf("authority.SaveCertificatePrivateKeyToFiles: converting private key to PEM format (type %T): %w", privateKey, err)
 
 		return err
 	}
 
 	if err = writeToFile(certificateBytes, certificateFilePath, 0o600); err != nil {
-		err = fmt.Errorf("tls.SaveCertificatePrivateKeyToFiles: writing certificate to file %q: %w", certificateFilePath, err)
+		err = fmt.Errorf("authority.SaveCertificatePrivateKeyToFiles: writing certificate to file %q: %w", certificateFilePath, err)
 
 		return err
 	}
 
 	if err = writeToFile(keyBytes, privateKeyFilePath, 0o400); err != nil {
-		err = fmt.Errorf("tls.SaveCertificatePrivateKeyToFiles: writing private key to file %q: %w", privateKeyFilePath, err)
+		err = fmt.Errorf("authority.SaveCertificatePrivateKeyToFiles: writing private key to file %q: %w", privateKeyFilePath, err)
 
 		return err
 	}
@@ -185,13 +185,13 @@ func SaveCertificatePrivateKeyToFiles(certificate *x509.Certificate, privateKey 
 //   - err (error): An error if directory creation fails; otherwise, nil.
 func mkdir(path string) (err error) {
 	if path == "" {
-		err = errors.New("tls.mkdir: invalid input, directory path is empty")
+		err = errors.New("authority.mkdir: invalid input, directory path is empty")
 
 		return err
 	}
 
 	if err = os.MkdirAll(path, 0o755); err != nil { //nolint:gosec // G301: certificate directories are deliberately world-traversable (0755); the files within are written 0600
-		err = fmt.Errorf("tls.mkdir: creating directory %q with permissions 0755: %w", path, err)
+		err = fmt.Errorf("authority.mkdir: creating directory %q with permissions 0755: %w", path, err)
 
 		return err
 	}
@@ -221,13 +221,13 @@ func mkdir(path string) (err error) {
 //   - err (error): An error if the path is a symlink or file writing or permission setting fails; otherwise, nil.
 func writeToFile(content []byte, path string, perm os.FileMode) (err error) {
 	if path == "" {
-		err = errors.New("tls.writeToFile: invalid input, file path is empty")
+		err = errors.New("authority.writeToFile: invalid input, file path is empty")
 
 		return err
 	}
 
 	if len(content) == 0 {
-		err = fmt.Errorf("tls.writeToFile: invalid input, content to write to file %q is empty", path)
+		err = fmt.Errorf("authority.writeToFile: invalid input, content to write to file %q is empty", path)
 
 		return err
 	}
@@ -237,12 +237,12 @@ func writeToFile(content []byte, path string, perm os.FileMode) (err error) {
 	// front.
 	if info, statErr := os.Lstat(path); statErr == nil {
 		if info.Mode()&os.ModeSymlink != 0 {
-			err = fmt.Errorf("tls.writeToFile: refusing to write through symlink %q", path)
+			err = fmt.Errorf("authority.writeToFile: refusing to write through symlink %q", path)
 
 			return err
 		}
 	} else if !errors.Is(statErr, os.ErrNotExist) {
-		err = fmt.Errorf("tls.writeToFile: inspecting file %q before writing: %w", path, statErr)
+		err = fmt.Errorf("authority.writeToFile: inspecting file %q before writing: %w", path, statErr)
 
 		return err
 	}
@@ -250,13 +250,13 @@ func writeToFile(content []byte, path string, perm os.FileMode) (err error) {
 	// A previous call may have left the file read-only (for example a private
 	// key written 0400); make it owner-writable so the write below succeeds.
 	if err = os.Chmod(path, 0o600); err != nil && !errors.Is(err, os.ErrNotExist) {
-		err = fmt.Errorf("tls.writeToFile: making pre-existing file %q writable: %w", path, err)
+		err = fmt.Errorf("authority.writeToFile: making pre-existing file %q writable: %w", path, err)
 
 		return err
 	}
 
 	if err = os.WriteFile(path, content, perm); err != nil {
-		err = fmt.Errorf("tls.writeToFile: writing content to file %q with permissions %04o: %w", path, perm, err)
+		err = fmt.Errorf("authority.writeToFile: writing content to file %q with permissions %04o: %w", path, perm, err)
 
 		return err
 	}
@@ -264,7 +264,7 @@ func writeToFile(content []byte, path string, perm os.FileMode) (err error) {
 	// os.WriteFile applies the permissions only when creating the file, so
 	// re-apply them to tighten a pre-existing file with looser permissions.
 	if err = os.Chmod(path, perm); err != nil {
-		err = fmt.Errorf("tls.writeToFile: setting permissions %04o on file %q: %w", perm, path, err)
+		err = fmt.Errorf("authority.writeToFile: setting permissions %04o on file %q: %w", perm, path, err)
 
 		return err
 	}

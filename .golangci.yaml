@@ -21,7 +21,7 @@ linters:
         - errcheck
         - errchkjson
         - errname
-        # - errorlint
+        - errorlint
         - exhaustive
         # - exhaustruct
         - exptostd
@@ -38,7 +38,8 @@ linters:
         # - goconst
         - gocritic
         # - gocyclo
-        # - godot
+        - godoclint
+        - godot
         - godox
         - goheader
         - gomoddirectives
@@ -82,7 +83,7 @@ linters:
         - protogetter
         - reassign
         # - recvcheck
-        # - revive
+        - revive
         - rowserrcheck
         - sloglint
         - spancheck
@@ -90,9 +91,9 @@ linters:
         - staticcheck
         - tagalign
         # - tagliatelle
+        - testpackage
         - testableexamples
         - testifylint
-        # - testpackage
         - thelper
         - tparallel
         - unconvert

@@ -1,29 +1,50 @@
 // Package authority generates, manages, and signs X.509 certificates for
 // building TLS servers with dynamic, per-host certificate issuance.
 //
+// # Entry points
+//
 // The package offers two complementary capabilities:
 //
 //   - One-off generation. [GenerateCACertificatePrivateKey] produces a
-//     self-signed Certificate Authority (CA) —
-//     [GenerateCACertificatePrivateKeyPEM] returns the same pair PEM-encoded —
-//     and [CertificateAuthority.GenerateTLSCertificate] issues a leaf
-//     certificate signed by that CA. PEM helpers ([CertificateToPEM],
-//     [PrivateKeyToPEM]) and file helpers ([SaveCertificatePrivateKeyToFiles],
-//     [LoadCertificatePrivateKeyFromFiles]) move certificates to and from disk.
-//   - A long-lived signing authority. [CertificateAuthority] issues leaf
-//     certificates on demand, optionally caching them via [WithCache] for at
-//     most [WithCacheMaxAge]. Construct one with [New], or with [NewFromPEM]
-//     when the CA pair is stored as PEM. Its
-//     [CertificateAuthority.NewTLSConfig]
-//     returns a [crypto/tls.Config] whose GetCertificate hook mints a
-//     certificate for the hostname a client requests via Server Name Indication
-//     (SNI), and [CertificateAuthority.TLSCertificate] returns the same bundled
-//     *tls.Certificate (leaf plus CA chain) for a host programmatically.
-//     [CertificateAuthority.SignCSR] signs certificate signing requests, for
-//     example to issue client certificates for mutual TLS (client
-//     authentication is the default extended key usage). This suits
-//     TLS-intercepting proxies and multi-tenant servers that cannot enumerate
-//     their hostnames in advance.
+//     self-signed Certificate Authority (CA);
+//     [GenerateCACertificatePrivateKeyPEM] returns the same pair PEM-encoded.
+//     PEM helpers ([CertificateToPEM], [PrivateKeyToPEM]) and file helpers
+//     ([SaveCertificatePrivateKeyToFiles],
+//     [LoadCertificatePrivateKeyFromFiles]) move certificates to and from
+//     disk.
+//   - A long-lived signing authority. [CertificateAuthority], constructed with
+//     [New] or [NewFromPEM], issues leaf certificates on demand through
+//     [CertificateAuthority.GenerateTLSCertificate] and signs certificate
+//     signing requests through [CertificateAuthority.SignCSR].
+//     [CertificateAuthority.NewTLSConfig] returns a [crypto/tls.Config] whose
+//     GetCertificate hook mints a certificate for the hostname a client
+//     requests via Server Name Indication (SNI);
+//     [CertificateAuthority.TLSCertificate] returns the same bundled
+//     *tls.Certificate (leaf plus CA chain) for a host programmatically. This
+//     suits TLS-intercepting proxies and multi-tenant servers that cannot
+//     enumerate their hostnames in advance.
+//
+// # Configuration
+//
+// Four functional option families configure the package:
+//
+//   - [CAOption] over [CAOptions] configures CA generation: subject, validity,
+//     and key algorithm. [WithCACommonName] is required; the validity defaults
+//     to 365 days and the key to [KeyTypeRSA2048].
+//   - [TLSOption] over [TLSOptions] configures leaf issuance and CSR signing:
+//     subject, validity, and extended key usages. The validity defaults to 365
+//     days and is clamped to the CA's expiry.
+//   - [TLSConfigOption] configures the [crypto/tls.Config] returned by
+//     [CertificateAuthority.NewTLSConfig] and
+//     [CertificateAuthority.NewTLSConfigWithHost]; [WithNextProtos] and
+//     [WithAllowedHosts] cover ALPN and SNI allowlisting.
+//   - [OptionFunc] over [Options] configures the authority itself: the optional
+//     certificate cache ([WithCache]) and its maximum age
+//     ([WithCacheMaxAge], one hour by default).
+//
+// Nil options are ignored, and because the parameter types are exported,
+// callers can write custom options. Invalid values make the constructors
+// return an error.
 //
 // # Production use
 //
@@ -80,17 +101,21 @@
 // expiry. TLS configs
 // produced by the authority require TLS 1.2 or higher and, by default, advertise
 // the HTTP/2 and HTTP/1.1 ALPN protocols (overridable with
-// [WithNextProtos]). A [CertificateAuthority] is safe for concurrent
-// use by multiple goroutines.
+// [WithNextProtos]).
+//
+// # Concurrency
+//
+// A [CertificateAuthority] is safe for concurrent use by multiple goroutines.
+// Concurrent requests for the same hostname share a single in-flight
+// generation, so a burst of handshakes does not multiply key-generation work.
 //
 // # Client side
 //
 // Probing remote TLS servers — dialing, handshake capture, fingerprints, and
-// certificate analysis — lives in the sibling [probe], [probe/fingerprint],
-// and [cert] subpackages, not here.
+// certificate analysis — lives in the root package, [fingerprint], and
+// [certificate], not here.
 //
-// [cache.NewInMemory]: https://pkg.go.dev/github.com/hueristiq/hq-lib-tls-go/cache#NewInMemory
-// [probe]: https://pkg.go.dev/github.com/hueristiq/hq-lib-tls-go/probe
-// [probe/fingerprint]: https://pkg.go.dev/github.com/hueristiq/hq-lib-tls-go/probe/fingerprint
-// [cert]: https://pkg.go.dev/github.com/hueristiq/hq-lib-tls-go/cert
+// [cache.NewInMemory]: https://pkg.go.dev/github.com/hueristiq/hq-lib-tls-go/authority/cache#NewInMemory
+// [fingerprint]: https://pkg.go.dev/github.com/hueristiq/hq-lib-tls-go/fingerprint
+// [certificate]: https://pkg.go.dev/github.com/hueristiq/hq-lib-tls-go/certificate
 package authority

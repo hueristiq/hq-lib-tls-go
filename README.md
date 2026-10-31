@@ -2,9 +2,9 @@
 
 ![made with go](https://img.shields.io/badge/made%20with-Go-1E90FF.svg) [![go reference](https://pkg.go.dev/badge/github.com/hueristiq/hq-lib-tls-go.svg)](https://pkg.go.dev/github.com/hueristiq/hq-lib-tls-go) [![license](https://img.shields.io/badge/license-MIT-gray.svg?color=1E90FF)](https://github.com/hueristiq/hq-lib-tls-go/blob/main/LICENSE) ![maintenance](https://img.shields.io/badge/maintained%3F-yes-1E90FF.svg) [![open issues](https://img.shields.io/github/issues-raw/hueristiq/hq-lib-tls-go.svg?style=flat&color=1E90FF)](https://github.com/hueristiq/hq-lib-tls-go/issues?q=is:issue+is:open) [![closed issues](https://img.shields.io/github/issues-closed-raw/hueristiq/hq-lib-tls-go.svg?style=flat&color=1E90FF)](https://github.com/hueristiq/hq-lib-tls-go/issues?q=is:issue+is:closed) [![contribution](https://img.shields.io/badge/contributions-welcome-1E90FF.svg)](https://github.com/hueristiq/hq-lib-tls-go/blob/main/CONTRIBUTING.md)
 
-`hq-lib-tls-go` is a [Go](https://golang.org/) package for serving and probing TLS: generating, managing, and signing X.509 certificates on the server side, and connecting to, fingerprinting, and analyzing remote TLS servers on the client side.
+`hq-lib-tls-go` is a [Go](https://golang.org/) package for serving and inspecting TLS: generating, managing, and signing X.509 certificates on the server side, and connecting to, fingerprinting, and analyzing remote TLS servers on the client side.
 
-## Resources
+## Table of Contents
 
 - [Features](#features)
 - [Installation](#installation)
@@ -17,37 +17,51 @@
 	- [Serving: Signing a Certificate Signing Request (CSR)](#serving-signing-a-certificate-signing-request-csr)
 	- [Serving: Configuring a TLS Server with SNI](#serving-configuring-a-tls-server-with-sni)
 	- [Serving: Restricting Issuance to Known Hosts](#serving-restricting-issuance-to-known-hosts)
-	- [Probing: Connecting to a TLS Server](#probing-connecting-to-a-tls-server)
-	- [Probing: Computing JA3/JA3S Fingerprints](#probing-computing-ja3ja3s-fingerprints)
-	- [Probing: Computing the JARM Fingerprint](#probing-computing-the-jarm-fingerprint)
-	- [Probing: Analyzing Certificates](#probing-analyzing-certificates)
+	- [Inspecting: Connecting to a TLS Server](#inspecting-connecting-to-a-tls-server)
+	- [Inspecting: Computing JA3/JA3S Fingerprints](#inspecting-computing-ja3ja3s-fingerprints)
+	- [Inspecting: Computing the JARM Fingerprint](#inspecting-computing-the-jarm-fingerprint)
+	- [Inspecting: Analyzing Certificates](#inspecting-analyzing-certificates)
 - [Contributing](#contributing)
 - [Licensing](#licensing)
 
 ## Features
 
-- **Serving — Self-Signed CA Generation:** Create CA certificates with custom subject, validity, and key algorithm (RSA-2048, ECDSA P-256, or Ed25519).
-- **Serving — TLS Certificate Issuance:** Issue leaf certificates for DNS names, IPs, emails, or URIs, with keys inheriting the CA's algorithm.
-- **Serving — Dynamic TLS Configuration:** SNI-driven per-host certificate generation, TLS 1.2 minimum, HTTP/2 and HTTP/1.1 ALPN.
-- **Serving — Opt-In Certificate Caching:** Pluggable caching via the `cache` package; without it, certificates are regenerated per request.
-- **Serving — SNI Allowlist:** Restrict dynamic issuance to known hostnames with `WithAllowedHosts`, bounding CPU use on Internet-facing servers.
-- **Probing — Configurable Connection Modes:** Dial through stdlib `crypto/tls` (`ctls`), zmap/zcrypto with raw handshake capture (`ztls`), the OpenSSL binary (`openssl`), or `auto`, which tries zcrypto first and falls back to the standard library.
-- **Probing — Early Termination:** Pre-handshake mode captures the ServerHello and certificates without completing the key exchange, for fast certificate gathering.
-- **Probing — Fingerprints:** JA3 and JA3S segments from captured handshake messages, and the JARM fingerprint via its ten crafted ClientHello probes.
-- **Probing — Certificate Analysis:** Tolerant chain parsing, subject/issuer metadata, hostname coverage, digests, and trust/revocation checks.
-- **Probing — Cipher Classification:** An embedded cipher-suite security table (insecure/weak/secure/recommended), generated from the ciphersuite.info dataset.
+- **Self-Signed CA Generation:** Create CA certificates with custom subject, validity, and key algorithm (RSA-2048, ECDSA P-256, or Ed25519).
+- **TLS Certificate Issuance:** Issue leaf certificates for DNS names, IPs, emails, or URIs, with keys inheriting the CA's algorithm.
+- **Dynamic TLS Configuration:** SNI-driven per-host certificate generation, TLS 1.2 minimum, HTTP/2 and HTTP/1.1 ALPN.
+- **Opt-In Certificate Caching:** Pluggable caching via the `authority/cache` package; without it, certificates are regenerated per request.
+- **SNI Allowlist:** Restrict dynamic issuance to known hostnames with `WithAllowedHosts`, bounding CPU use on Internet-facing servers.
+- **Configurable Connection Modes:** Dial through stdlib `crypto/tls` (`ctls`), zmap/zcrypto with raw handshake capture (`ztls`), the OpenSSL binary (`openssl`), or `auto`, which tries zcrypto first and falls back to the standard library.
+- **Early Termination:** Pre-handshake mode captures the ServerHello and certificates without completing the key exchange, for fast certificate gathering.
+- **Fingerprints:** JA3 and JA3S segments from captured handshake messages, and the JARM fingerprint via its ten crafted ClientHello probes.
+- **Certificate Analysis:** Tolerant chain parsing, subject/issuer metadata, hostname coverage, digests, and trust/revocation checks.
+- **Cipher Classification:** An embedded cipher-suite security table (insecure/weak/secure/recommended), generated from the ciphersuite.info dataset.
 
 ## Installation
 
 To install `hq-lib-tls-go`, run the following command in your Go project:
 
 ```bash
-go get -v -u github.com/hueristiq/hq-lib-tls-go
+go get github.com/hueristiq/hq-lib-tls-go@latest
 ```
+
+Requires Go 1.26 or later.
 
 ## Usage
 
-The serving API lives in the `authority` subpackage; the probing API lives in `probe`, `probe/fingerprint`, and `cert`. The examples below import them under the `hqgotlsauthority`, `hqgotlsprobe`, `hqgotlsfingerprint`, and `hqgotlscert` aliases.
+The serving API lives in the `authority` subpackage; the client API lives in the module root, `fingerprint`, and `certificate`. The examples below import them under the `hqgotlsauthority`, `hqgotls`, `hqgotlsfingerprint`, and `hqgotlscertificate` aliases.
+
+```go
+import (
+	hqgotlsauthority "github.com/hueristiq/hq-lib-tls-go/authority"
+	hqgotlscache "github.com/hueristiq/hq-lib-tls-go/authority/cache"
+	hqgotlscertificate "github.com/hueristiq/hq-lib-tls-go/certificate"
+	hqgotls "github.com/hueristiq/hq-lib-tls-go"
+	hqgotlsfingerprint "github.com/hueristiq/hq-lib-tls-go/fingerprint"
+)
+```
+
+The snippets below are illustrative.
 
 ### Serving: Generating a CA Certificate
 
@@ -263,7 +277,7 @@ import (
 	"time"
 
 	hqgotlsauthority "github.com/hueristiq/hq-lib-tls-go/authority"
-	hqgotlscache "github.com/hueristiq/hq-lib-tls-go/cache"
+	hqgotlscache "github.com/hueristiq/hq-lib-tls-go/authority/cache"
 )
 
 func main() {
@@ -322,9 +336,9 @@ tlsConfig := ca.NewTLSConfig(hqgotlsauthority.WithAllowedHosts("example.com", "a
 
 Names are normalized exactly like requested SNI names (port stripped, case folded, trailing dot removed), so "Example.COM." and "example.com" are the same entry. A client that sends no SNI falls through to the wrapped configuration: `NewTLSConfig` errors, `NewTLSConfigWithHost` substitutes its default hostname. Calling `WithAllowedHosts` with no hosts rejects every SNI name.
 
-### Probing: Connecting to a TLS Server
+### Inspecting: Connecting to a TLS Server
 
-The `probe` package connects to a TLS server in one of four modes and returns one unified result: the negotiated version and cipher, the ALPN protocol, the certificate chain as raw DER, and — in zcrypto mode — the captured ClientHello and ServerHello messages.
+The root package connects to a TLS server in one of four modes and returns one unified result: the negotiated version and cipher, the ALPN protocol, the certificate chain as raw DER, and — in zcrypto mode — the captured ClientHello and ServerHello messages.
 
 ```go
 package main
@@ -333,21 +347,21 @@ import (
 	"context"
 	"log"
 
-	hqgotlsprobe "github.com/hueristiq/hq-lib-tls-go/probe"
+	hqgotls "github.com/hueristiq/hq-lib-tls-go"
 )
 
 func main() {
-	prober, err := hqgotlsprobe.New(
-		hqgotlsprobe.WithMode(hqgotlsprobe.ModeAuto), // ztls first, ctls fallback (the default)
-		hqgotlsprobe.WithTimeout(5*time.Second),
+	client, err := hqgotls.New(
+		hqgotls.WithMode(hqgotls.ModeAuto), // ztls first, ctls fallback (the default)
+		hqgotls.WithTimeout(5*time.Second),
 	)
 	if err != nil {
-		log.Fatalf("Failed to create prober: %v", err)
+		log.Fatalf("Failed to create client: %v", err)
 	}
 
-	result, err := prober.Probe(context.Background(), "example.com:443")
+	result, err := client.Inspect(context.Background(), "example.com:443")
 	if err != nil {
-		log.Fatalf("Failed to probe: %v", err)
+		log.Fatalf("Failed to inspect: %v", err)
 	}
 
 	log.Printf("%s negotiated TLS %#x with cipher %#x", result.Host, result.TLSVersion, result.CipherSuite)
@@ -364,9 +378,9 @@ The modes:
 
 Use `WithPreHandshake(true)` to abort the zcrypto handshake right after the ServerHello and certificates arrive, skipping the client's key exchange for faster certificate gathering (effective up to TLS 1.2). `WithServerName`, `WithCipherSuites`, `WithMinVersion`/`WithMaxVersion`, `WithNextProtos`, and `WithProxy` (SOCKS5) cover the remaining dialing knobs.
 
-### Probing: Computing JA3/JA3S Fingerprints
+### Inspecting: Computing JA3/JA3S Fingerprints
 
-The `probe/fingerprint` package turns captured handshake messages into JA3 and JA3S segments and their canonical MD5 digests:
+The `fingerprint` package turns captured handshake messages into JA3 and JA3S segments and their canonical MD5 digests:
 
 ```go
 package main
@@ -375,19 +389,19 @@ import (
 	"context"
 	"log"
 
-	hqgotlsfingerprint "github.com/hueristiq/hq-lib-tls-go/probe/fingerprint"
-	hqgotlsprobe "github.com/hueristiq/hq-lib-tls-go/probe"
+	hqgotlsfingerprint "github.com/hueristiq/hq-lib-tls-go/fingerprint"
+	hqgotls "github.com/hueristiq/hq-lib-tls-go"
 )
 
 func main() {
-	prober, err := hqgotlsprobe.New(hqgotlsprobe.WithMode(hqgotlsprobe.ModeZTLS))
+	client, err := hqgotls.New(hqgotls.WithMode(hqgotls.ModeZTLS))
 	if err != nil {
-		log.Fatalf("Failed to create prober: %v", err)
+		log.Fatalf("Failed to create client: %v", err)
 	}
 
-	result, err := prober.Probe(context.Background(), "example.com:443")
+	result, err := client.Inspect(context.Background(), "example.com:443")
 	if err != nil {
-		log.Fatalf("Failed to probe: %v", err)
+		log.Fatalf("Failed to inspect: %v", err)
 	}
 
 	ja3, err := hqgotlsfingerprint.JA3(result.ClientHello)
@@ -405,17 +419,17 @@ func main() {
 }
 ```
 
-### Probing: Computing the JARM Fingerprint
+### Inspecting: Computing the JARM Fingerprint
 
-`Prober.JARM` sends the ten crafted ClientHello probes defined by the JARM specification over raw TCP and fuzzy-hashes the server's responses — no handshake completes:
+`Client.JARM` sends the ten crafted ClientHello probes defined by the JARM specification over raw TCP and fuzzy-hashes the server's responses — no handshake completes:
 
 ```go
-prober, err := hqgotlsprobe.New(hqgotlsprobe.WithTimeout(5*time.Second))
+client, err := hqgotls.New(hqgotls.WithTimeout(5*time.Second))
 if err != nil {
-	log.Fatalf("Failed to create prober: %v", err)
+	log.Fatalf("Failed to create client: %v", err)
 }
 
-jarm, err := prober.JARM(context.Background(), "example.com:443")
+jarm, err := client.JARM(context.Background(), "example.com:443")
 if err != nil {
 	log.Fatalf("Failed to compute JARM: %v", err)
 }
@@ -423,9 +437,9 @@ if err != nil {
 log.Printf("JARM: %s", jarm)
 ```
 
-### Probing: Analyzing Certificates
+### Inspecting: Analyzing Certificates
 
-The `cert` package parses the chain a probe captured, inspects it, and checks trust and revocation:
+The `certificate` package parses the chain an inspection captured, inspects it, and checks trust and revocation:
 
 ```go
 package main
@@ -435,22 +449,22 @@ import (
 	"log"
 	"time"
 
-	hqgotlscert "github.com/hueristiq/hq-lib-tls-go/cert"
-	hqgotlsprobe "github.com/hueristiq/hq-lib-tls-go/probe"
+	hqgotlscertificate "github.com/hueristiq/hq-lib-tls-go/certificate"
+	hqgotls "github.com/hueristiq/hq-lib-tls-go"
 )
 
 func main() {
-	prober, err := hqgotlsprobe.New()
+	client, err := hqgotls.New()
 	if err != nil {
-		log.Fatalf("Failed to create prober: %v", err)
+		log.Fatalf("Failed to create client: %v", err)
 	}
 
-	result, err := prober.Probe(context.Background(), "example.com:443")
+	result, err := client.Inspect(context.Background(), "example.com:443")
 	if err != nil {
-		log.Fatalf("Failed to probe: %v", err)
+		log.Fatalf("Failed to inspect: %v", err)
 	}
 
-	chain, err := hqgotlscert.Parse(result.Certificates)
+	chain, err := hqgotlscertificate.Parse(result.Certificates)
 	if err != nil {
 		log.Fatalf("Failed to parse chain: %v", err)
 	}
@@ -466,15 +480,17 @@ func main() {
 	log.Printf("self-signed: %v", leaf.SelfSigned())
 	log.Printf("mismatched: %v", leaf.Mismatched("example.com"))
 
-	if untrusted, _ := hqgotlscert.Untrusted(result.Certificates, "example.com"); untrusted {
+	if untrusted, _ := hqgotlscertificate.Untrusted(result.Certificates, "example.com"); untrusted {
 		log.Println("a client with the system root store would reject this chain")
 	}
 
-	if revoked, _ := hqgotlscert.Revoked(result.Certificates); revoked {
+	if revoked, _ := hqgotlscertificate.Revoked(result.Certificates); revoked {
 		log.Println("the leaf certificate has been revoked")
 	}
 }
 ```
+
+The embedded cipher classification table is generated from the [ciphersuite.info](https://ciphersuite.info) dataset; see `cmd/ciphersgen` for the generator. JA3 and JA3S summarize a captured ClientHello and ServerHello, and JARM fingerprints a server by sending ten crafted ClientHello probes.
 
 ## Contributing
 
@@ -486,6 +502,4 @@ A big thank you to all the [contributors](https://github.com/hueristiq/hq-lib-tl
 
 ## Licensing
 
-This package is licensed under the [MIT license](https://opensource.org/license/mit). You are free to use, modify, and distribute it, as long as you follow the terms of the license. You can find the full license text in the repository - [Full MIT license text](https://github.com/hueristiq/hq-lib-tls-go/blob/master/LICENSE).
-
-The embedded cipher classification table is generated from the [ciphersuite.info](https://ciphersuite.info) dataset; see `probe/ciphers/gen` for the generator. The JARM implementation follows the [salesforce/jarm](https://github.com/salesforce/jarm) specification (BSD 3-Clause); the JA3/JA3S implementation follows the [salesforce/ja3](https://github.com/salesforce/ja3) specification (BSD 3-Clause).
+This package is licensed under the [MIT license](https://opensource.org/license/mit). You are free to use, modify, and distribute it, as long as you follow the terms of the license. You can find the full license text in the repository - [Full MIT license text](https://github.com/hueristiq/hq-lib-tls-go/blob/main/LICENSE).

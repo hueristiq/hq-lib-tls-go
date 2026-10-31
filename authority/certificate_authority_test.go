@@ -1,3 +1,4 @@
+//nolint:testpackage // tests exercise unexported behavior.
 package authority
 
 import (
@@ -18,6 +19,7 @@ import (
 	"math/big"
 	"net"
 	"net/url"
+	"os"
 	"sync"
 	"testing"
 	"time"
@@ -25,7 +27,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	hqgotlscache "github.com/hueristiq/hq-lib-tls-go/cache"
+	hqgotlscache "github.com/hueristiq/hq-lib-tls-go/authority/cache"
 )
 
 var testKeyTypes = []struct {
@@ -50,7 +52,7 @@ func newTestCACertificatePrivateKey(t *testing.T, ofs ...CAOption) (certificate 
 	return certificate, privateKey
 }
 
-func newTestAuthority(t *testing.T, ofs ...AuthorityOption) (ca *CertificateAuthority) {
+func newTestAuthority(t *testing.T, ofs ...OptionFunc) (ca *CertificateAuthority) {
 	t.Helper()
 
 	caCertificate, caPrivateKey := newTestCACertificatePrivateKey(t)
@@ -273,11 +275,11 @@ func TestNewRejectsInvalidCacheOptions(t *testing.T) {
 
 	tests := []struct {
 		name        string
-		ofs         []AuthorityOption
+		ofs         []OptionFunc
 		errContains string
 	}{
-		{"zero cache max age", []AuthorityOption{WithCacheMaxAge(0)}, "cache max age must be positive"},
-		{"negative cache max age", []AuthorityOption{WithCacheMaxAge(-time.Hour)}, "cache max age must be positive"},
+		{"zero cache max age", []OptionFunc{WithCacheMaxAge(0)}, "cache max age must be positive"},
+		{"negative cache max age", []OptionFunc{WithCacheMaxAge(-time.Hour)}, "cache max age must be positive"},
 	}
 
 	for _, tt := range tests {
@@ -957,8 +959,8 @@ func TestGenerateTLSCertificateValidation(t *testing.T) {
 	nilCurveAuthority := &CertificateAuthority{
 		caCertificate: &x509.Certificate{NotAfter: time.Now().Add(time.Hour)},
 		caCertificatePrivateKey: &ecdsa.PrivateKey{
-			PublicKey: ecdsa.PublicKey{X: big.NewInt(1), Y: big.NewInt(1)},
-			D:         big.NewInt(1),
+			PublicKey: ecdsa.PublicKey{X: big.NewInt(1), Y: big.NewInt(1)}, //nolint:staticcheck // invalid-key fixture.
+			D:         big.NewInt(1),                                       //nolint:staticcheck // invalid-key fixture.
 		},
 	}
 
@@ -1578,7 +1580,7 @@ func TestPrivateKeyToPEMValidation(t *testing.T) {
 	}{
 		{"nil private key", nil, "private key is nil"},
 		{"unsupported private key type", fakeSigner{}, "unsupported private key type"},
-		{"invalid ECDSA private key", &ecdsa.PrivateKey{PublicKey: ecdsa.PublicKey{Curve: elliptic.P256(), X: big.NewInt(1), Y: big.NewInt(1)}, D: big.NewInt(1)}, "marshaling ECDSA private key"},
+		{"invalid ECDSA private key", &ecdsa.PrivateKey{PublicKey: ecdsa.PublicKey{Curve: elliptic.P256(), X: big.NewInt(1), Y: big.NewInt(1)}, D: big.NewInt(1)}, "marshaling ECDSA private key"}, //nolint:staticcheck // invalid-key fixture.
 	}
 
 	for _, tt := range tests {
@@ -2104,4 +2106,328 @@ func TestNewTLSConfigWithHostAndAllowedHosts(t *testing.T) {
 	certificate, err = config.GetCertificate(&tls.ClientHelloInfo{ServerName: "allowed.example.com"})
 	require.NoError(t, err)
 	assert.Contains(t, certificate.Leaf.DNSNames, "allowed.example.com")
+}
+
+func failingRSAKeyGeneration(io.Reader, int) (key *rsa.PrivateKey, err error) {
+	return nil, errors.New("rsa key generation failed")
+}
+
+func failingECDSAKeyGeneration(elliptic.Curve, io.Reader) (key *ecdsa.PrivateKey, err error) {
+	return nil, errors.New("ecdsa key generation failed")
+}
+
+func failingEd25519KeyGeneration(io.Reader) (publicKey ed25519.PublicKey, privateKey ed25519.PrivateKey, err error) {
+	return nil, nil, errors.New("ed25519 key generation failed")
+}
+
+func failingRandomInt(io.Reader, *big.Int) (value *big.Int, err error) {
+	return nil, errors.New("random serial generation failed")
+}
+
+func failingPKIXMarshal(any) (der []byte, err error) {
+	return nil, errors.New("pkix marshal failed")
+}
+
+func emptyPKIXMarshal(any) (der []byte, err error) {
+	return []byte{}, nil
+}
+
+func failingPKCS8Marshal(any) (der []byte, err error) {
+	return nil, errors.New("pkcs8 marshal failed")
+}
+
+func failingCertificateCreation(io.Reader, *x509.Certificate, *x509.Certificate, any, any) (der []byte, err error) {
+	return nil, errors.New("certificate creation failed")
+}
+
+func failingCertificateParse([]byte) (certificate *x509.Certificate, err error) {
+	return nil, errors.New("certificate parsing failed")
+}
+
+func failingCertificateToPEM(*x509.Certificate) (pemBytes []byte, err error) {
+	return nil, errors.New("certificate PEM conversion failed")
+}
+
+func failingPrivateKeyToPEM(crypto.Signer) (pemBytes []byte, err error) {
+	return nil, errors.New("private key PEM conversion failed")
+}
+
+func failingLstat(string) (info os.FileInfo, err error) {
+	return nil, errors.New("lstat failed")
+}
+
+func failingChmodBeforeWrite(string, os.FileMode) (err error) {
+	return errors.New("chmod before write failed")
+}
+
+func failingChmodAfterWrite(string, os.FileMode) (err error) {
+	return errors.New("chmod after write failed")
+}
+
+func TestGenerateCACertificatePrivateKeyFailurePaths(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
+		keyType     KeyType
+		mutate      func(*operations)
+		errContains string
+	}{
+		"rsa key generation": {
+			keyType:     KeyTypeRSA2048,
+			mutate:      func(ops *operations) { ops.rsaGenerateKey = failingRSAKeyGeneration },
+			errContains: "generating RSA private key",
+		},
+		"ecdsa key generation": {
+			keyType:     KeyTypeECDSAP256,
+			mutate:      func(ops *operations) { ops.ecdsaGenerateKey = failingECDSAKeyGeneration },
+			errContains: "generating ECDSA private key",
+		},
+		"ed25519 key generation": {
+			keyType:     KeyTypeEd25519,
+			mutate:      func(ops *operations) { ops.ed25519GenerateKey = failingEd25519KeyGeneration },
+			errContains: "generating Ed25519 private key",
+		},
+		"serial number generation": {
+			keyType:     KeyTypeEd25519,
+			mutate:      func(ops *operations) { ops.randomInt = failingRandomInt },
+			errContains: "generating serial number",
+		},
+		"subject key identifier generation": {
+			keyType:     KeyTypeEd25519,
+			mutate:      func(ops *operations) { ops.marshalPKIXPublicKey = failingPKIXMarshal },
+			errContains: "generating subject key ID",
+		},
+		"certificate creation": {
+			keyType:     KeyTypeEd25519,
+			mutate:      func(ops *operations) { ops.createCertificate = failingCertificateCreation },
+			errContains: "creating self-signed CA certificate",
+		},
+		"certificate parsing": {
+			keyType:     KeyTypeEd25519,
+			mutate:      func(ops *operations) { ops.parseCertificate = failingCertificateParse },
+			errContains: "parsing generated CA certificate",
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			ops := defaultOperations()
+			test.mutate(ops)
+
+			certificate, privateKey, err := generateCACertificatePrivateKey(ops, WithCACommonName("Test CA"), WithCAKeyType(test.keyType))
+			require.ErrorContains(t, err, test.errContains)
+			assert.Nil(t, certificate)
+			assert.Nil(t, privateKey)
+		})
+	}
+}
+
+func TestGenerateCACertificatePrivateKeyPEMFailurePaths(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
+		mutate      func(*operations)
+		errContains string
+	}{
+		"certificate conversion": {
+			mutate:      func(ops *operations) { ops.certificateToPEM = failingCertificateToPEM },
+			errContains: "converting CA certificate to PEM format",
+		},
+		"private key conversion": {
+			mutate:      func(ops *operations) { ops.privateKeyToPEM = failingPrivateKeyToPEM },
+			errContains: "converting CA private key to PEM format",
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			ops := defaultOperations()
+			test.mutate(ops)
+
+			certificatePEM, privateKeyPEM, err := generateCACertificatePrivateKeyPEM(ops, WithCACommonName("Test CA"), WithCAKeyType(KeyTypeEd25519))
+			require.ErrorContains(t, err, test.errContains)
+			assert.Nil(t, certificatePEM)
+			assert.Nil(t, privateKeyPEM)
+		})
+	}
+}
+
+func TestGenerateTLSCertificateFailurePaths(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
+		keyType     KeyType
+		mutate      func(*operations)
+		errContains string
+	}{
+		"ecdsa key generation": {
+			keyType:     KeyTypeECDSAP256,
+			mutate:      func(ops *operations) { ops.ecdsaGenerateKey = failingECDSAKeyGeneration },
+			errContains: "generating ECDSA private key",
+		},
+		"ed25519 key generation": {
+			keyType:     KeyTypeEd25519,
+			mutate:      func(ops *operations) { ops.ed25519GenerateKey = failingEd25519KeyGeneration },
+			errContains: "generating Ed25519 private key",
+		},
+		"serial number generation": {
+			keyType:     KeyTypeEd25519,
+			mutate:      func(ops *operations) { ops.randomInt = failingRandomInt },
+			errContains: "generating serial number",
+		},
+		"subject key identifier generation": {
+			keyType:     KeyTypeEd25519,
+			mutate:      func(ops *operations) { ops.marshalPKIXPublicKey = failingPKIXMarshal },
+			errContains: "generating subject key ID",
+		},
+		"certificate parsing": {
+			keyType:     KeyTypeEd25519,
+			mutate:      func(ops *operations) { ops.parseCertificate = failingCertificateParse },
+			errContains: "parsing generated TLS certificate",
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			caCertificate, caPrivateKey := newTestCACertificatePrivateKey(t, WithCAKeyType(test.keyType))
+
+			ca, err := New(caCertificate, caPrivateKey)
+			require.NoError(t, err)
+
+			ca.ops = defaultOperations()
+			test.mutate(ca.ops)
+
+			certificate, privateKey, err := ca.GenerateTLSCertificate([]string{"example.com"})
+			require.ErrorContains(t, err, test.errContains)
+			assert.Nil(t, certificate)
+			assert.Nil(t, privateKey)
+		})
+	}
+}
+
+func TestSignCSRFailurePaths(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
+		mutate      func(*operations)
+		errContains string
+	}{
+		"serial number generation": {
+			mutate:      func(ops *operations) { ops.randomInt = failingRandomInt },
+			errContains: "generating serial number",
+		},
+		"subject key identifier generation": {
+			mutate:      func(ops *operations) { ops.marshalPKIXPublicKey = failingPKIXMarshal },
+			errContains: "generating subject key ID",
+		},
+		"certificate creation": {
+			mutate:      func(ops *operations) { ops.createCertificate = failingCertificateCreation },
+			errContains: "signing CSR",
+		},
+		"certificate parsing": {
+			mutate:      func(ops *operations) { ops.parseCertificate = failingCertificateParse },
+			errContains: "parsing signed CSR certificate",
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			ca := newTestAuthority(t)
+			ca.ops = defaultOperations()
+			test.mutate(ca.ops)
+
+			_, err := ca.SignCSR(newTestCSR(t, "client.example.com", []string{"client.example.com"}))
+			require.ErrorContains(t, err, test.errContains)
+		})
+	}
+}
+
+func TestPrivateKeyToPEMFailurePath(t *testing.T) {
+	t.Parallel()
+
+	ops := defaultOperations()
+	ops.marshalPKCS8Key = failingPKCS8Marshal
+
+	_, ed25519PrivateKey, err := ed25519.GenerateKey(nil)
+	require.NoError(t, err)
+
+	_, err = privateKeyToPEM(ops, ed25519PrivateKey)
+	require.ErrorContains(t, err, "marshaling Ed25519 private key")
+}
+
+func TestGenerateSerialNumberWithFailurePath(t *testing.T) {
+	t.Parallel()
+
+	ops := defaultOperations()
+	ops.randomInt = failingRandomInt
+
+	serialNumber, err := generateSerialNumberWith(ops)
+	require.ErrorContains(t, err, "generating random serial number")
+	assert.Nil(t, serialNumber)
+}
+
+func TestGenerateSubjectKeyIDWithEmptyMarshal(t *testing.T) {
+	t.Parallel()
+
+	ops := defaultOperations()
+	ops.marshalPKIXPublicKey = emptyPKIXMarshal
+
+	ski, err := generateSubjectKeyIDWith(ops, "not a real key")
+	require.ErrorContains(t, err, "marshaled PKIX data is empty")
+	assert.Nil(t, ski)
+}
+
+func TestWithAllowedHostsRequiresWrappedHandler(t *testing.T) {
+	t.Parallel()
+
+	config := &tls.Config{}
+
+	WithAllowedHosts("example.com")(config)
+
+	_, err := config.GetCertificate(&tls.ClientHelloInfo{ServerName: "example.com"})
+	require.ErrorContains(t, err, "has no GetCertificate to wrap")
+}
+
+// secondLookupCache misses the first Get and hits the second, exercising the
+// cache re-check performed under the in-flight mutex.
+type secondLookupCache struct {
+	entry *hqgotlscache.CertificateCacheEntry
+	gets  int
+}
+
+func (c *secondLookupCache) Get(string) (entry *hqgotlscache.CertificateCacheEntry, found bool) {
+	c.gets++
+
+	if c.gets == 1 {
+		return nil, false
+	}
+
+	return c.entry, true
+}
+
+func (c *secondLookupCache) Set(string, *hqgotlscache.CertificateCacheEntry) {}
+
+func TestGetTLSCertificateSecondCacheLookup(t *testing.T) {
+	t.Parallel()
+
+	entry := &hqgotlscache.CertificateCacheEntry{
+		Certificate: &tls.Certificate{Leaf: &x509.Certificate{NotAfter: time.Now().Add(time.Hour)}},
+		CreatedAt:   time.Now(),
+	}
+	cache := &secondLookupCache{entry: entry}
+
+	ca := newTestAuthority(t, WithCache(cache), WithCacheMaxAge(time.Hour))
+
+	certificate, err := ca.TLSCertificate("example.com")
+	require.NoError(t, err)
+	assert.Same(t, entry.Certificate, certificate)
+	assert.Equal(t, 2, cache.gets)
 }

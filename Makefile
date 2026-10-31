@@ -40,7 +40,7 @@ endef
 
 BIN_DIR = $(CURDIR)/.bin
 
-GOLANGCI_LINT_BIN_VER = 2.12.0
+GOLANGCI_LINT_BIN_VER = 2.15.0
 GOLANGCI_LINT_BIN_DIR = $(BIN_DIR)/golangci-lint/$(GOLANGCI_LINT_BIN_VER)
 
 GOLANGCI_LINT_BIN = $(GOLANGCI_LINT_BIN_DIR)/golangci-lint
@@ -94,7 +94,7 @@ lefthook-initialize:
 	fi
 	@$(call log_success,Initializing lefthook...done!)
 
-.PHONY: go-mod-clean go-mod-tidy go-mod-update go-fmt go-lint go-test
+.PHONY: go-mod-clean go-mod-tidy go-mod-update go-doc-check go-fmt-check go-fmt go-lint go-test
 
 go-mod-clean:
 	@$(call log_header,Cleaning Go module cache...)
@@ -112,12 +112,41 @@ go-mod-update:
 	@go get -f -u ./... || ( $(call log_error,Failed Updating Go modules (step 2)!) && exit 1 )
 	@$(call log_success,Updating Go modules...done!)
 
+go-doc-check:
+	@$(call log_header,Checking package doc.go files...)
+	@fail=0; \
+	for dir in $$(find . -name '*.go' -not -path './.git/*' -not -path '*/examples/*' -not -path '*/cmd/*' -not -path '*/testdata/*' -exec dirname {} \; | sort -u); do \
+		if [ ! -f "$$dir/doc.go" ]; then \
+			echo "missing doc.go: $$dir"; fail=1; continue; \
+		fi; \
+		if grep -qE '^[[:space:]]*(import|func|type|var|const)[[:space:]]' "$$dir/doc.go"; then \
+			echo "doc.go contains declarations: $$dir"; fail=1; \
+		fi; \
+		pkg=$$(grep -m1 '^package ' "$$dir/doc.go" | awk '{print $$2}'); \
+		if ! grep -q "^// Package $$pkg " "$$dir/doc.go"; then \
+			echo "doc.go does not start with // Package $$pkg: $$dir"; fail=1; \
+		fi; \
+		if ! grep -q '^// # ' "$$dir/doc.go"; then \
+			echo "doc.go has no section heading: $$dir"; fail=1; \
+		fi; \
+		if grep -l '^// Package ' "$$dir"/*.go 2>/dev/null | grep -v '/doc.go$$' | grep -qv '_test.go$$'; then \
+			echo "package comment outside doc.go: $$dir"; fail=1; \
+		fi; \
+	done; \
+	if [ $$fail -ne 0 ]; then $(call log_error,package doc.go check failed!); exit 1; fi
+	@$(call log_success,Checking package doc.go files...done!)
+
+go-fmt-check: install-golangci-lint
+	@$(call log_header,Checking Go formatting...)
+	@$(GOLANGCI_LINT_BIN) fmt --diff ./... || ( $(call log_error,Go formatting check failed!) && exit 1 )
+	@$(call log_success,Checking Go formatting...done!)
+
 go-fmt: install-golangci-lint
 	@$(call log_header,Formatting Go code...)
 	@$(GOLANGCI_LINT_BIN) fmt ./... || ( $(call log_error,Failed Formatting Go code!) && exit 1 )
 	@$(call log_success,Formatting Go code...done!)
 
-go-lint: go-fmt
+go-lint:
 	@$(call log_header,Linting Go code...)
 	@$(GOLANGCI_LINT_BIN) run ./... || ( $(call log_error,Failed Linting Go code!) && exit 1 )
 	@$(call log_success,Linting Go code...done!)
@@ -125,6 +154,7 @@ go-lint: go-fmt
 go-test:
 	@$(call log_header, Running Go tests...)
 	@go test -v -race ./... || ( $(call log_error, Failed Running Go tests!) && exit 1 )
+	@go build ./examples/... || ( $(call log_error, Failed Building Go examples!) && exit 1 )
 	@$(call log_success, Running Go tests...done!)
 
 .PHONY: help
@@ -146,6 +176,8 @@ help:
 	@echo "   $(COLOR_GREEN)go-mod-clean$(COLOR_RESET) ................ Clean Go module cache."
 	@echo "   $(COLOR_GREEN)go-mod-tidy$(COLOR_RESET) ................. Tidy Go modules."
 	@echo "   $(COLOR_GREEN)go-mod-update$(COLOR_RESET) ............... Update Go modules."
+	@echo "   $(COLOR_GREEN)go-doc-check$(COLOR_RESET) ................ Check package doc.go files."
+	@echo "   $(COLOR_GREEN)go-fmt-check$(COLOR_RESET) ................ Check Go formatting."
 	@echo "   $(COLOR_GREEN)go-fmt$(COLOR_RESET) ...................... Format Go code."
 	@echo "   $(COLOR_GREEN)go-lint$(COLOR_RESET) ..................... Lint Go code."
 	@echo "   $(COLOR_GREEN)go-test$(COLOR_RESET) ..................... Run Go tests."

@@ -6,7 +6,6 @@ import (
 	"crypto/ecdsa"
 	"crypto/ed25519"
 	"crypto/rsa"
-	"crypto/tls"
 	"crypto/x509"
 	"errors"
 	"fmt"
@@ -22,28 +21,44 @@ import (
 // provides detailed error messages for debugging purposes.
 //
 // Parameters:
-//   - certificateFilePath (string): The file path to the PEM-encoded certificate.
-//   - certificatePrivateKeyFilePath (string): The file path to the PEM-encoded private key.
+//   - certificateFilePath (string): the file path to the PEM-encoded certificate.
+//   - certificatePrivateKeyFilePath (string): the file path to the PEM-encoded private key.
 //
 // Returns:
-//   - certificate (*x509.Certificate): A pointer to the loaded X.509 certificate.
-//   - privateKey (crypto.Signer): The loaded private key, implementing the crypto.Signer interface.
-//   - err (error): An error if loading, parsing, or type assertion fails; otherwise, nil.
+//   - certificate (*x509.Certificate): a pointer to the loaded X.509 certificate.
+//   - privateKey (crypto.Signer): the loaded private key, implementing the crypto.Signer interface.
+//   - err (error): an error if loading, parsing, or type assertion fails; otherwise, nil.
 func LoadCertificatePrivateKeyFromFiles(certificateFilePath, certificatePrivateKeyFilePath string) (certificate *x509.Certificate, privateKey crypto.Signer, err error) {
+	return loadCertificatePrivateKeyFromFiles(defaultOperations(), certificateFilePath, certificatePrivateKeyFilePath)
+}
+
+// loadCertificatePrivateKeyFromFiles loads and validates a certificate and
+// private key pair using the given operations.
+//
+// Parameters:
+//   - ops (*operations): the cryptographic operations to use.
+//   - certificateFilePath (string): the file path to the PEM-encoded certificate.
+//   - certificatePrivateKeyFilePath (string): the file path to the PEM-encoded private key.
+//
+// Returns:
+//   - certificate (*x509.Certificate): a pointer to the loaded X.509 certificate.
+//   - privateKey (crypto.Signer): the loaded private key, implementing the crypto.Signer interface.
+//   - err (error): an error if loading, parsing, or type assertion fails; otherwise, nil.
+func loadCertificatePrivateKeyFromFiles(ops *operations, certificateFilePath, certificatePrivateKeyFilePath string) (certificate *x509.Certificate, privateKey crypto.Signer, err error) {
 	if certificateFilePath == "" || certificatePrivateKeyFilePath == "" {
 		err = errors.New("authority.LoadCertificatePrivateKeyFromFiles: invalid input, certificate file path or private key file path is empty")
 
 		return nil, nil, err
 	}
 
-	keyPair, err := tls.LoadX509KeyPair(certificateFilePath, certificatePrivateKeyFilePath)
+	keyPair, err := ops.loadKeyPair(certificateFilePath, certificatePrivateKeyFilePath)
 	if err != nil {
 		err = fmt.Errorf("authority.LoadCertificatePrivateKeyFromFiles: loading certificate and private key from files %q and %q: %w", certificateFilePath, certificatePrivateKeyFilePath, err)
 
 		return nil, nil, err
 	}
 
-	certificate, err = x509.ParseCertificate(keyPair.Certificate[0])
+	certificate, err = ops.parseCertificate(keyPair.Certificate[0])
 	if err != nil {
 		err = fmt.Errorf("authority.LoadCertificatePrivateKeyFromFiles: parsing X.509 certificate from file %q: %w", certificateFilePath, err)
 
@@ -81,13 +96,13 @@ func LoadCertificatePrivateKeyFromFiles(certificateFilePath, certificatePrivateK
 // supported types (RSA, ECDSA, or Ed25519).
 //
 // Parameters:
-//   - certificate (*x509.Certificate): A pointer to the X.509 certificate to save.
-//   - privateKey (crypto.Signer): The private key to save, implementing the crypto.Signer interface.
-//   - certificateFilePath (string): The file path where the certificate will be saved in PEM format.
-//   - privateKeyFilePath (string): The file path where the private key will be saved in PEM format.
+//   - certificate (*x509.Certificate): a pointer to the X.509 certificate to save.
+//   - privateKey (crypto.Signer): the private key to save, implementing the crypto.Signer interface.
+//   - certificateFilePath (string): the file path where the certificate will be saved in PEM format.
+//   - privateKeyFilePath (string): the file path where the private key will be saved in PEM format.
 //
 // Returns:
-//   - err (error): An error if the certificate and private key do not match, or directory creation,
+//   - err (error): an error if the certificate and private key do not match, or directory creation,
 //     PEM conversion, or file writing fails; otherwise, nil.
 func SaveCertificatePrivateKeyToFiles(certificate *x509.Certificate, privateKey crypto.Signer, certificateFilePath, privateKeyFilePath string) (err error) {
 	if certificate == nil {
@@ -179,10 +194,10 @@ func SaveCertificatePrivateKeyToFiles(certificate *x509.Certificate, privateKey 
 // certificate files. If the directory already exists, no action is taken.
 //
 // Parameters:
-//   - path (string): The file system path for the directory to create.
+//   - path (string): the file system path for the directory to create.
 //
 // Returns:
-//   - err (error): An error if directory creation fails; otherwise, nil.
+//   - err (error): an error if directory creation fails; otherwise, nil.
 func mkdir(path string) (err error) {
 	if path == "" {
 		err = errors.New("authority.mkdir: invalid input, directory path is empty")
@@ -213,13 +228,28 @@ func mkdir(path string) (err error) {
 // On Windows, permission bits are not honored beyond the read-only attribute.
 //
 // Parameters:
-//   - content ([]byte): A byte slice containing the data to write.
-//   - path (string): The file path where the content will be written.
-//   - perm (os.FileMode): The permissions the file must have after writing.
+//   - content ([]byte): a byte slice containing the data to write.
+//   - path (string): the file path where the content will be written.
+//   - perm (os.FileMode): the permissions the file must have after writing.
 //
 // Returns:
-//   - err (error): An error if the path is a symlink or file writing or permission setting fails; otherwise, nil.
+//   - err (error): an error if the path is a symlink or file writing or permission setting fails; otherwise, nil.
 func writeToFile(content []byte, path string, perm os.FileMode) (err error) {
+	return writeToFileWith(defaultOperations(), content, path, perm)
+}
+
+// writeToFileWith writes content to path with the given permissions using
+// the supplied filesystem operations.
+//
+// Parameters:
+//   - ops (*operations): the filesystem operations to use.
+//   - content ([]byte): a byte slice containing the data to write.
+//   - path (string): the file path where the content will be written.
+//   - perm (os.FileMode): the permissions the file must have after writing.
+//
+// Returns:
+//   - err (error): an error if the path is a symlink or file writing or permission setting fails; otherwise, nil.
+func writeToFileWith(ops *operations, content []byte, path string, perm os.FileMode) (err error) {
 	if path == "" {
 		err = errors.New("authority.writeToFile: invalid input, file path is empty")
 
@@ -235,7 +265,7 @@ func writeToFile(content []byte, path string, perm os.FileMode) (err error) {
 	// chmod and the write below follow symlinks, so a path that resolves to one
 	// would silently redirect the write onto the link's target. Refuse it up
 	// front.
-	if info, statErr := os.Lstat(path); statErr == nil {
+	if info, statErr := ops.lstat(path); statErr == nil {
 		if info.Mode()&os.ModeSymlink != 0 {
 			err = fmt.Errorf("authority.writeToFile: refusing to write through symlink %q", path)
 
@@ -249,7 +279,7 @@ func writeToFile(content []byte, path string, perm os.FileMode) (err error) {
 
 	// A previous call may have left the file read-only (for example a private
 	// key written 0400); make it owner-writable so the write below succeeds.
-	if err = os.Chmod(path, 0o600); err != nil && !errors.Is(err, os.ErrNotExist) {
+	if err = ops.chmodBeforeWrite(path, 0o600); err != nil && !errors.Is(err, os.ErrNotExist) {
 		err = fmt.Errorf("authority.writeToFile: making pre-existing file %q writable: %w", path, err)
 
 		return err
@@ -263,7 +293,7 @@ func writeToFile(content []byte, path string, perm os.FileMode) (err error) {
 
 	// os.WriteFile applies the permissions only when creating the file, so
 	// re-apply them to tighten a pre-existing file with looser permissions.
-	if err = os.Chmod(path, perm); err != nil {
+	if err = ops.chmodAfterWrite(path, perm); err != nil {
 		err = fmt.Errorf("authority.writeToFile: setting permissions %04o on file %q: %w", perm, path, err)
 
 		return err

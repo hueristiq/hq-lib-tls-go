@@ -1,4 +1,3 @@
-//nolint:testpackage // tests exercise unexported behavior.
 package fingerprint
 
 import "fmt"

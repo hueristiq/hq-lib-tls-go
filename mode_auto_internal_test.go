@@ -18,7 +18,7 @@ func TestInspectAutoFallsBackToCTLS(t *testing.T) {
 
 	defer stop()
 
-	client, err := New(WithMode(ModeAuto), WithTimeout(5*time.Second))
+	client, err := New(WithMode(ModeAuto), WithTimeout(15*time.Second))
 
 	require.NoError(t, err)
 

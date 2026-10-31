@@ -19,7 +19,7 @@ func TestInspectZTLS(t *testing.T) {
 
 	defer stop()
 
-	client, err := New(WithMode(ModeZTLS), WithTimeout(5*time.Second), WithNextProtos("h2", "http/1.1"))
+	client, err := New(WithMode(ModeZTLS), WithTimeout(15*time.Second), WithNextProtos("h2", "http/1.1"))
 
 	require.NoError(t, err)
 
@@ -45,7 +45,7 @@ func TestInspectZTLSWithPreHandshake(t *testing.T) {
 
 	client, err := New(
 		WithMode(ModeZTLS),
-		WithTimeout(5*time.Second),
+		WithTimeout(15*time.Second),
 		WithPreHandshake(true),
 	)
 

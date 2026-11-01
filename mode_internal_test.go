@@ -11,10 +11,8 @@ func TestParseMode(t *testing.T) {
 	t.Parallel()
 
 	tests := map[string]Mode{
-		"":        ModeAuto,
-		"auto":    ModeAuto,
+		"":        ModeCTLS,
 		"ctls":    ModeCTLS,
-		"ztls":    ModeZTLS,
 		"openssl": ModeOpenSSL,
 		"OPENSSL": ModeOpenSSL,
 	}
@@ -30,20 +28,24 @@ func TestParseMode(t *testing.T) {
 		})
 	}
 
-	_, err := ParseMode("bogus")
+	for _, name := range []string{"auto", "ztls", "bogus"} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 
-	require.Error(t, err)
+			_, err := ParseMode(name)
+
+			require.Error(t, err)
+		})
+	}
 }
 
 func TestModeString(t *testing.T) {
 	t.Parallel()
 
 	tests := map[Mode]string{
-		ModeAuto:    "auto",
 		ModeCTLS:    "ctls",
-		ModeZTLS:    "ztls",
 		ModeOpenSSL: "openssl",
-		Mode(99):    "auto",
+		Mode(99):    "ctls",
 	}
 
 	for mode, expected := range tests {

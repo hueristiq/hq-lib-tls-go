@@ -32,8 +32,6 @@ func TestInspectCTLS(t *testing.T) {
 	assert.Equal(t, uint16(tls.VersionTLS12), result.TLSVersion)
 	assert.NotZero(t, result.CipherSuite)
 	assert.NotEmpty(t, result.Certificates)
-	assert.Empty(t, result.ClientHello, "ctls mode has no handshake capture")
-	assert.Empty(t, result.ServerHello, "ctls mode has no handshake capture")
 	assert.Equal(t, "127.0.0.1", result.IP)
 }
 

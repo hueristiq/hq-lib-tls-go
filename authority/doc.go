@@ -31,14 +31,14 @@
 //   - [CAOption] over [CAOptions] configures CA generation: subject, validity,
 //     and key algorithm. [WithCACommonName] is required; the validity defaults
 //     to 365 days and the key to [KeyTypeRSA2048].
-//   - [TLSOption] over [TLSOptions] configures leaf issuance and CSR signing:
+//   - [IssueOption] over [IssueOptions] configures leaf issuance and CSR signing:
 //     subject, validity, and extended key usages. The validity defaults to 365
 //     days and is clamped to the CA's expiry.
-//   - [TLSConfigOption] configures the [crypto/tls.Config] returned by
+//   - [TLSConfigMutator] configures the [crypto/tls.Config] returned by
 //     [CertificateAuthority.NewTLSConfig] and
 //     [CertificateAuthority.NewTLSConfigWithHost]; [WithNextProtos] and
 //     [WithAllowedHosts] cover ALPN and SNI allowlisting.
-//   - [OptionFunc] over [Options] configures the authority itself: the optional
+//   - [Option] over [Options] configures the authority itself: the optional
 //     certificate cache ([WithCache]) and its maximum age
 //     ([WithCacheMaxAge], one hour by default).
 //
@@ -111,9 +111,9 @@
 //
 // # Client side
 //
-// Probing remote TLS servers — dialing, handshake capture, fingerprints, and
-// certificate analysis — lives in the root package, [fingerprint], and
-// [certificate], not here.
+// Probing remote TLS servers — dialing, fingerprinting, and certificate
+// analysis — lives in the root package, [fingerprint], and [certificate],
+// not here.
 //
 // [cache.NewInMemory]: https://pkg.go.dev/github.com/hueristiq/hq-lib-tls-go/authority/cache#NewInMemory
 // [fingerprint]: https://pkg.go.dev/github.com/hueristiq/hq-lib-tls-go/fingerprint

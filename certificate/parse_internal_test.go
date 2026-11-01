@@ -4,15 +4,12 @@ import (
 	"crypto"
 	"crypto/x509"
 	"encoding/pem"
-	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	hqgotlsauthority "github.com/hueristiq/hq-lib-tls-go/authority"
-
-	zcryptox509 "github.com/zmap/zcrypto/x509"
 )
 
 // testCA mints a CA and an authority-issued leaf for the given hosts.
@@ -125,39 +122,16 @@ func TestPEMBlock(t *testing.T) {
 	assert.Equal(t, leafCertificate.Raw, block.Bytes)
 }
 
-func TestParseOneWithFallbackToStdlib(t *testing.T) {
+func TestParseOneEmptyInput(t *testing.T) {
 	t.Parallel()
 
-	caCertificate, _, leafCertificate := testCA(t, []string{"example.com"})
-
-	zcryptoFailure := func([]byte) (certificate *zcryptox509.Certificate, err error) {
-		return nil, errors.New("zcrypto rejected the certificate")
-	}
-
-	certificate, err := parseOneWith(leafCertificate.Raw, zcryptoFailure, x509.ParseCertificate)
-	require.NoError(t, err)
-	assert.Equal(t, leafCertificate.Raw, certificate.Raw)
-	assert.Equal(t, []string{"example.com"}, certificate.DNSNames)
-
-	chain, err := Parse([][]byte{leafCertificate.Raw, caCertificate.Raw})
-	require.NoError(t, err)
-	assert.Equal(t, leafCertificate.Raw, chain[0].Raw)
-}
-
-func TestParseOneWithBothParsersFail(t *testing.T) {
-	t.Parallel()
-
-	_, err := parseOneWith([]byte("not a certificate"), func([]byte) (*zcryptox509.Certificate, error) {
-		return nil, errors.New("zcrypto rejected the certificate")
-	}, func([]byte) (*x509.Certificate, error) {
-		return nil, errors.New("stdlib rejected the certificate")
-	})
-	require.ErrorContains(t, err, "neither parser accepted the certificate")
-}
-
-func TestParseOneWithEmptyInput(t *testing.T) {
-	t.Parallel()
-
-	_, err := parseOneWith(nil, zcryptox509.ParseCertificate, x509.ParseCertificate)
+	_, err := parseOne(nil)
 	require.ErrorContains(t, err, "certificate is empty")
+}
+
+func TestParseOneRejectsInvalidCertificate(t *testing.T) {
+	t.Parallel()
+
+	_, err := parseOne([]byte("not a certificate"))
+	require.Error(t, err)
 }

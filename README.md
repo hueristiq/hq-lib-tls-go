@@ -1,6 +1,6 @@
 # hq-lib-tls-go
 
-![made with go](https://img.shields.io/badge/made%20with-Go-1E90FF.svg) [![go reference](https://pkg.go.dev/badge/github.com/hueristiq/hq-lib-tls-go.svg)](https://pkg.go.dev/github.com/hueristiq/hq-lib-tls-go) [![license](https://img.shields.io/badge/license-MIT-gray.svg?color=1E90FF)](https://github.com/hueristiq/hq-lib-tls-go/blob/main/LICENSE) ![maintenance](https://img.shields.io/badge/maintained%3F-yes-1E90FF.svg) [![open issues](https://img.shields.io/github/issues-raw/hueristiq/hq-lib-tls-go.svg?style=flat&color=1E90FF)](https://github.com/hueristiq/hq-lib-tls-go/issues?q=is:issue+is:open) [![closed issues](https://img.shields.io/github/issues-closed-raw/hueristiq/hq-lib-tls-go.svg?style=flat&color=1E90FF)](https://github.com/hueristiq/hq-lib-tls-go/issues?q=is:issue+is:closed) [![contribution](https://img.shields.io/badge/contributions-welcome-1E90FF.svg)](https://github.com/hueristiq/hq-lib-tls-go/blob/main/CONTRIBUTING.md)
+![made with go](https://img.shields.io/badge/made%20with-Go-1E90FF.svg) [![go reference](https://pkg.go.dev/badge/github.com/hueristiq/hq-lib-tls-go.svg)](https://pkg.go.dev/github.com/hueristiq/hq-lib-tls-go) [![license](https://img.shields.io/badge/license-MIT-gray.svg?color=1E90FF)](https://github.com/hueristiq/hq-lib-tls-go/blob/main/LICENSE) ![maintenance](https://img.shields.io/badge/maintained%3F-yes-1E90FF.svg) [![open issues](https://img.shields.io/github/issues-raw/hueristiq/hq-lib-tls-go.svg?style=flat&color=1E90FF)](https://github.com/hueristiq/hq-lib-tls-go/issues?q=is:issue+is:open) [![closed issues](https://img.shields.io/github/issues-closed-raw/hueristiq/hq-lib-tls-go.svg?style=flat&color=1E90FF)](https://github.com/hueristiq/hq-lib-tls-go/issues?q=is:issue+is:closed)
 
 `hq-lib-tls-go` is a [Go](https://golang.org/) package for serving and inspecting TLS: generating, managing, and signing X.509 certificates on the server side, and connecting to, fingerprinting, and analyzing remote TLS servers on the client side.
 
@@ -9,18 +9,18 @@
 - [Features](#features)
 - [Installation](#installation)
 - [Usage](#usage)
-	- [Serving: Generating a CA Certificate](#serving-generating-a-ca-certificate)
-	- [Serving: Choosing the Key Algorithm](#serving-choosing-the-key-algorithm)
-	- [Serving: Loading a Certificate from Files](#serving-loading-a-certificate-from-files)
-	- [Serving: Loading a CA from PEM Bytes](#serving-loading-a-ca-from-pem-bytes)
-	- [Serving: Generating a TLS Certificate](#serving-generating-a-tls-certificate)
-	- [Serving: Signing a Certificate Signing Request (CSR)](#serving-signing-a-certificate-signing-request-csr)
-	- [Serving: Configuring a TLS Server with SNI](#serving-configuring-a-tls-server-with-sni)
-	- [Serving: Restricting Issuance to Known Hosts](#serving-restricting-issuance-to-known-hosts)
-	- [Inspecting: Connecting to a TLS Server](#inspecting-connecting-to-a-tls-server)
-	- [Inspecting: Computing JA3/JA3S Fingerprints](#inspecting-computing-ja3ja3s-fingerprints)
-	- [Inspecting: Computing the JARM Fingerprint](#inspecting-computing-the-jarm-fingerprint)
-	- [Inspecting: Analyzing Certificates](#inspecting-analyzing-certificates)
+	- [Generating a CA Certificate](#generating-a-ca-certificate)
+	- [Choosing the Key Algorithm](#choosing-the-key-algorithm)
+	- [Loading a Certificate from Files](#loading-a-certificate-from-files)
+	- [Loading a CA from PEM Bytes](#loading-a-ca-from-pem-bytes)
+	- [Generating a TLS Certificate](#generating-a-tls-certificate)
+	- [Signing a Certificate Signing Request (CSR)](#signing-a-certificate-signing-request-csr)
+	- [Configuring a TLS Server with SNI](#configuring-a-tls-server-with-sni)
+	- [Restricting Issuance to Known Hosts](#restricting-issuance-to-known-hosts)
+	- [Connecting to a TLS Server](#connecting-to-a-tls-server)
+	- [Computing JA3/JA3S Fingerprints](#computing-ja3ja3s-fingerprints)
+	- [Computing the JARM Fingerprint](#computing-the-jarm-fingerprint)
+	- [Analyzing Certificates](#analyzing-certificates)
 - [Contributing](#contributing)
 - [Licensing](#licensing)
 
@@ -31,9 +31,8 @@
 - **Dynamic TLS Configuration:** SNI-driven per-host certificate generation, TLS 1.2 minimum, HTTP/2 and HTTP/1.1 ALPN.
 - **Opt-In Certificate Caching:** Pluggable caching via the `authority/cache` package; without it, certificates are regenerated per request.
 - **SNI Allowlist:** Restrict dynamic issuance to known hostnames with `WithAllowedHosts`, bounding CPU use on Internet-facing servers.
-- **Configurable Connection Modes:** Dial through stdlib `crypto/tls` (`ctls`), zmap/zcrypto with raw handshake capture (`ztls`), the OpenSSL binary (`openssl`), or `auto`, which tries zcrypto first and falls back to the standard library.
-- **Early Termination:** Pre-handshake mode captures the ServerHello and certificates without completing the key exchange, for fast certificate gathering.
-- **Fingerprints:** JA3 and JA3S segments from captured handshake messages, and the JARM fingerprint via its ten crafted ClientHello probes.
+- **Configurable Connection Modes:** Dial through the standard library's `crypto/tls` (`ctls`) or the OpenSSL binary (`openssl`).
+- **Fingerprints:** JA3 and JA3S segments computed from handshake message bytes you supply, and the JARM fingerprint via its ten crafted ClientHello probes.
 - **Certificate Analysis:** Tolerant chain parsing, subject/issuer metadata, hostname coverage, digests, and trust/revocation checks.
 - **Cipher Classification:** An embedded cipher-suite security table (insecure/weak/secure/recommended), generated from the ciphersuite.info dataset.
 
@@ -63,9 +62,9 @@ import (
 
 The snippets below are illustrative.
 
-### Serving: Generating a CA Certificate
+### Generating a CA Certificate
 
-Use `GenerateCACertificatePrivateKey` to create a self-signed CA certificate and its private key. By default it generates a 2048-bit RSA key; see [Choosing the Key Algorithm](#serving-choosing-the-key-algorithm) to select ECDSA or Ed25519. Persist the result to PEM files with `SaveCertificatePrivateKeyToFiles`.
+Use `GenerateCACertificatePrivateKey` to create a self-signed CA certificate and its private key. By default it generates a 2048-bit RSA key; see [Choosing the Key Algorithm](#choosing-the-key-algorithm) to select ECDSA or Ed25519. Persist the result to PEM files with `SaveCertificatePrivateKeyToFiles`.
 
 ```go
 package main
@@ -97,7 +96,7 @@ func main() {
 }
 ```
 
-### Serving: Choosing the Key Algorithm
+### Choosing the Key Algorithm
 
 Pass `WithCAKeyType` to control the CA's private key algorithm. Because every leaf certificate inherits the CA's algorithm, an ECDSA or Ed25519 CA also makes per-host issuance faster — useful for the SNI server below, which generates a key per hostname.
 
@@ -110,7 +109,7 @@ caCert, caKey, err := hqgotlsauthority.GenerateCACertificatePrivateKey(
 
 Available key types: `KeyTypeRSA2048` (default), `KeyTypeECDSAP256`, and `KeyTypeEd25519`.
 
-### Serving: Loading a Certificate from Files
+### Loading a Certificate from Files
 
 Load a certificate and private key from PEM files with `LoadCertificatePrivateKeyFromFiles`.
 
@@ -133,7 +132,7 @@ func main() {
 }
 ```
 
-### Serving: Loading a CA from PEM Bytes
+### Loading a CA from PEM Bytes
 
 When the certificate and key are already in memory (for example, read from a secret store), construct the authority directly with `NewFromPEM`.
 
@@ -144,7 +143,7 @@ if err != nil {
 }
 ```
 
-### Serving: Generating a TLS Certificate
+### Generating a TLS Certificate
 
 Use a `CertificateAuthority` to issue a leaf certificate for specific hosts. Each host is routed into the matching Subject Alternative Name field — DNS name, IP address, email address, or URI.
 
@@ -200,9 +199,9 @@ clientCert, clientKey, err := ca.GenerateTLSCertificate(
 )
 ```
 
-### Serving: Signing a Certificate Signing Request (CSR)
+### Signing a Certificate Signing Request (CSR)
 
-`SignCSR` signs a CSR with the CA's private key: the client keeps its private key, and the CA never sees it. The CSR's signature is verified before signing, its subject alternative names are copied to the certificate, and the default extended key usage is client authentication — suited to issuing client certificates for mutual TLS. The same `TLSOption`s as `GenerateTLSCertificate` override the defaults.
+`SignCSR` signs a CSR with the CA's private key: the client keeps its private key, and the CA never sees it. The CSR's signature is verified before signing, its subject alternative names are copied to the certificate, and the default extended key usage is client authentication — suited to issuing client certificates for mutual TLS. The same `IssueOption`s as `GenerateTLSCertificate` override the defaults.
 
 ```go
 package main
@@ -260,13 +259,13 @@ func main() {
 }
 ```
 
-### Serving: Configuring a TLS Server with SNI
+### Configuring a TLS Server with SNI
 
 `NewTLSConfig` returns a `*tls.Config` that generates a certificate for whatever hostname the client requests via SNI. Caching is opt-in: pass a cache from the `cache` package to `New` via `WithCache` to reuse certificates across connections, and tune entry expiry with `WithCacheMaxAge`. Without a cache, a certificate is regenerated for every request.
 
 **Production use:** the cache is off by default — enable it with `WithCache(hqgotlscache.NewInMemory(maxSize))`, sized to the number of distinct hosts served, and set `WithCacheMaxAge` well below the leaf validity (24 hours for SNI-driven issuance). For dynamic per-host issuance, consider `WithCAKeyType(KeyTypeECDSAP256)`: ECDSA-P256 leaf generation is markedly faster than RSA-2048.
 
-Note that the `GetCertificate` hook mints a new key pair for every distinct requested hostname, so an Internet-facing server should restrict issuance — see [Restricting Issuance to Known Hosts](#serving-restricting-issuance-to-known-hosts) — to avoid CPU exhaustion from unbounded certificate generation.
+Note that the `GetCertificate` hook mints a new key pair for every distinct requested hostname, so an Internet-facing server should restrict issuance — see [Restricting Issuance to Known Hosts](#restricting-issuance-to-known-hosts) — to avoid CPU exhaustion from unbounded certificate generation.
 
 ```go
 package main
@@ -326,7 +325,7 @@ Because the certificates are signed by a self-signed CA, clients must trust `caC
 
 The returned configuration requires TLS 1.2 or higher and advertises the `h2` and `http/1.1` ALPN protocols by default; pass `WithNextProtos` to change them, or call it with no arguments to disable ALPN for non-HTTP servers. To get the same bundled certificate (leaf plus CA chain, with the `Leaf` field populated) outside of a server, call `ca.TLSCertificate("example.com")`.
 
-### Serving: Restricting Issuance to Known Hosts
+### Restricting Issuance to Known Hosts
 
 The `GetCertificate` hook mints a new key pair for every distinct requested hostname. On an Internet-facing server, restrict issuance to the hostnames you actually serve with `WithAllowedHosts`; a handshake for any other name fails before any key generation happens:
 
@@ -336,9 +335,9 @@ tlsConfig := ca.NewTLSConfig(hqgotlsauthority.WithAllowedHosts("example.com", "a
 
 Names are normalized exactly like requested SNI names (port stripped, case folded, trailing dot removed), so "Example.COM." and "example.com" are the same entry. A client that sends no SNI falls through to the wrapped configuration: `NewTLSConfig` errors, `NewTLSConfigWithHost` substitutes its default hostname. Calling `WithAllowedHosts` with no hosts rejects every SNI name.
 
-### Inspecting: Connecting to a TLS Server
+### Connecting to a TLS Server
 
-The root package connects to a TLS server in one of four modes and returns one unified result: the negotiated version and cipher, the ALPN protocol, the certificate chain as raw DER, and — in zcrypto mode — the captured ClientHello and ServerHello messages.
+The root package connects to a TLS server in one of two modes and returns one unified result: the negotiated version and cipher, the ALPN protocol, and the certificate chain as raw DER.
 
 ```go
 package main
@@ -352,7 +351,7 @@ import (
 
 func main() {
 	client, err := hqgotls.New(
-		hqgotls.WithMode(hqgotls.ModeAuto), // ztls first, ctls fallback (the default)
+		hqgotls.WithMode(hqgotls.ModeCTLS), // the standard library (the default)
 		hqgotls.WithTimeout(5*time.Second),
 	)
 	if err != nil {
@@ -365,61 +364,49 @@ func main() {
 	}
 
 	log.Printf("%s negotiated TLS %#x with cipher %#x", result.Host, result.TLSVersion, result.CipherSuite)
-	log.Printf("captured %d certificates and a %d-byte ServerHello", len(result.Certificates), len(result.ServerHello))
+	log.Printf("captured %d certificates", len(result.Certificates))
 }
 ```
 
 The modes:
 
-- `ModeAuto` — zcrypto first, standard library fallback (default).
-- `ModeZTLS` — zmap/zcrypto, with raw handshake capture; tolerates old and unusual servers.
-- `ModeCTLS` — the standard library's crypto/tls; no raw capture.
+- `ModeCTLS` — the standard library's crypto/tls (default).
 - `ModeOpenSSL` — shells out to the OpenSSL binary (`s_client`); needs OpenSSL on PATH or `WithOpenSSLBinary`.
 
-Use `WithPreHandshake(true)` to abort the zcrypto handshake right after the ServerHello and certificates arrive, skipping the client's key exchange for faster certificate gathering (effective up to TLS 1.2). `WithServerName`, `WithCipherSuites`, `WithMinVersion`/`WithMaxVersion`, `WithNextProtos`, and `WithProxy` (SOCKS5) cover the remaining dialing knobs.
+`WithServerName`, `WithCipherSuites`, `WithMinVersion`/`WithMaxVersion`, `WithNextProtos`, and `WithProxy` (SOCKS5) cover the remaining dialing knobs.
 
-### Inspecting: Computing JA3/JA3S Fingerprints
+### Computing JA3/JA3S Fingerprints
 
-The `fingerprint` package turns captured handshake messages into JA3 and JA3S segments and their canonical MD5 digests:
+The `fingerprint` package turns handshake message bytes into JA3 and JA3S segments and their canonical MD5 digests. Supply a ClientHello or ServerHello captured elsewhere, for example from a packet capture:
 
 ```go
 package main
 
 import (
-	"context"
 	"log"
 
 	hqgotlsfingerprint "github.com/hueristiq/hq-lib-tls-go/fingerprint"
-	hqgotls "github.com/hueristiq/hq-lib-tls-go"
 )
 
-func main() {
-	client, err := hqgotls.New(hqgotls.WithMode(hqgotls.ModeZTLS))
+func fingerprintHandshake(clientHelloBytes, serverHelloBytes []byte) error {
+	ja3, err := hqgotlsfingerprint.JA3(clientHelloBytes)
 	if err != nil {
-		log.Fatalf("Failed to create client: %v", err)
+		return err
 	}
 
-	result, err := client.Inspect(context.Background(), "example.com:443")
+	ja3s, err := hqgotlsfingerprint.JA3S(serverHelloBytes)
 	if err != nil {
-		log.Fatalf("Failed to inspect: %v", err)
-	}
-
-	ja3, err := hqgotlsfingerprint.JA3(result.ClientHello)
-	if err != nil {
-		log.Fatalf("Failed to compute JA3: %v", err)
-	}
-
-	ja3s, err := hqgotlsfingerprint.JA3S(result.ServerHello)
-	if err != nil {
-		log.Fatalf("Failed to compute JA3S: %v", err)
+		return err
 	}
 
 	log.Printf("JA3: %s", hqgotlsfingerprint.Digest(ja3))
 	log.Printf("JA3S: %s", hqgotlsfingerprint.Digest(ja3s))
+
+	return nil
 }
 ```
 
-### Inspecting: Computing the JARM Fingerprint
+### Computing the JARM Fingerprint
 
 `Client.JARM` sends the ten crafted ClientHello probes defined by the JARM specification over raw TCP and fuzzy-hashes the server's responses — no handshake completes:
 
@@ -437,7 +424,7 @@ if err != nil {
 log.Printf("JARM: %s", jarm)
 ```
 
-### Inspecting: Analyzing Certificates
+### Analyzing Certificates
 
 The `certificate` package parses the chain an inspection captured, inspects it, and checks trust and revocation:
 
@@ -494,7 +481,7 @@ The embedded cipher classification table is generated from the [ciphersuite.info
 
 ## Contributing
 
-Contributions are welcome and encouraged! Feel free to submit [Pull Requests](https://github.com/hueristiq/hq-lib-tls-go/pulls) or report [Issues](https://github.com/hueristiq/hq-lib-tls-go/issues). For more details, check out the [contribution guidelines](https://github.com/hueristiq/hq-lib-tls-go/blob/main/CONTRIBUTING.md).
+Contributions are welcome and encouraged! Feel free to submit [Pull Requests](https://github.com/hueristiq/hq-lib-tls-go/pulls) or report [Issues](https://github.com/hueristiq/hq-lib-tls-go/issues).
 
 A big thank you to all the [contributors](https://github.com/hueristiq/hq-lib-tls-go/graphs/contributors) for your ongoing support!
 

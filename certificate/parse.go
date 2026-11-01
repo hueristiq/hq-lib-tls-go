@@ -9,9 +9,6 @@ import (
 	"net"
 	"strings"
 	"time"
-
-	zcryptox509 "github.com/zmap/zcrypto/x509"
-	zcryptopkix "github.com/zmap/zcrypto/x509/pkix"
 )
 
 // Subject is the subject (or issuer) of a certificate.
@@ -64,9 +61,8 @@ type Certificate struct {
 	CRLDistributionPoints []string
 }
 
-// Parse parses a DER certificate chain (leaf first), preferring zcrypto's
-// tolerant parser and falling back to the standard library for each
-// certificate.
+// Parse parses a DER certificate chain (leaf first) with the Go standard
+// library's crypto/x509.
 //
 // Parameters:
 //   - chainDER ([][]byte): the DER-encoded certificates.
@@ -100,83 +96,33 @@ func Parse(chainDER [][]byte) (certificates []*Certificate, err error) {
 	return certificates, nil
 }
 
-// parseOne parses a single DER certificate with zcrypto first and the
-// standard library as a fallback, then extracts the metadata.
+// parseOne parses a single DER certificate with the Go standard library and
+// extracts the metadata.
 //
 // Parameters:
 //   - raw ([]byte): the DER-encoded certificate.
 //
 // Returns:
 //   - certificate (*Certificate): the parsed certificate.
-//   - err (error): non-nil when both parsers fail.
+//   - err (error): non-nil when the certificate is empty or cannot be parsed.
 func parseOne(raw []byte) (certificate *Certificate, err error) {
-	return parseOneWith(raw, zcryptox509.ParseCertificate, x509.ParseCertificate)
-}
-
-// parseOneWith parses a single DER certificate with the given parsers in
-// order: zcrypto's tolerant parser first and the standard library as a
-// fallback. The first parser to accept the certificate supplies the
-// metadata.
-//
-// Parameters:
-//   - raw ([]byte): the DER-encoded certificate.
-//   - zcryptoParser (func([]byte) (*zcryptox509.Certificate, error)): the tolerant parser to try first.
-//   - stdlibParser (func([]byte) (*x509.Certificate, error)): the standard library parser to try second.
-//
-// Returns:
-//   - certificate (*Certificate): the parsed certificate.
-//   - err (error): non-nil when both parsers fail.
-func parseOneWith(raw []byte, zcryptoParser func([]byte) (*zcryptox509.Certificate, error), stdlibParser func([]byte) (*x509.Certificate, error)) (certificate *Certificate, err error) {
 	if len(raw) == 0 {
 		err = errors.New("cert.parseOne: invalid input, certificate is empty")
 
 		return nil, err
 	}
 
-	zcryptoCertificate, zcryptoErr := zcryptoParser(raw)
-	if zcryptoErr == nil {
-		return extractFromZCrypto(zcryptoCertificate), nil
+	parsed, err := x509.ParseCertificate(raw)
+	if err != nil {
+		err = fmt.Errorf("cert.parseOne: %w", err)
+
+		return nil, err
 	}
 
-	stdlibCertificate, stdlibErr := stdlibParser(raw)
-	if stdlibErr == nil {
-		return extractFromStdlib(stdlibCertificate), nil
-	}
-
-	err = fmt.Errorf("cert.parseOne: neither parser accepted the certificate (zcrypto: %w; stdlib: %w)", zcryptoErr, stdlibErr)
-
-	return nil, err
+	return extractCertificate(parsed), nil
 }
 
-// extractFromZCrypto copies the metadata of a zcrypto certificate into the
-// package's Certificate type.
-//
-// Parameters:
-//   - certificate (*zcryptox509.Certificate): the parsed certificate.
-//
-// Returns:
-//   - extracted (*Certificate): the copied certificate.
-func extractFromZCrypto(certificate *zcryptox509.Certificate) (extracted *Certificate) {
-	extracted = &Certificate{
-		Raw:                   certificate.Raw,
-		RawSubject:            certificate.RawSubject,
-		RawIssuer:             certificate.RawIssuer,
-		Subject:               subjectFromZCrypto(&certificate.Subject),
-		Issuer:                subjectFromZCrypto(&certificate.Issuer),
-		SerialNumber:          certificate.SerialNumber.String(),
-		NotBefore:             certificate.NotBefore,
-		NotAfter:              certificate.NotAfter,
-		DNSNames:              append([]string(nil), certificate.DNSNames...),
-		IPAddresses:           ipStrings(certificate.IPAddresses),
-		IssuingCertificateURL: append([]string(nil), certificate.IssuingCertificateURL...),
-		OCSPServer:            append([]string(nil), certificate.OCSPServer...),
-		CRLDistributionPoints: append([]string(nil), certificate.CRLDistributionPoints...),
-	}
-
-	return extracted
-}
-
-// extractFromStdlib copies the metadata of a standard library certificate
+// extractCertificate copies the metadata of a standard library certificate
 // into the package's Certificate type.
 //
 // Parameters:
@@ -184,13 +130,13 @@ func extractFromZCrypto(certificate *zcryptox509.Certificate) (extracted *Certif
 //
 // Returns:
 //   - extracted (*Certificate): the copied certificate.
-func extractFromStdlib(certificate *x509.Certificate) (extracted *Certificate) {
+func extractCertificate(certificate *x509.Certificate) (extracted *Certificate) {
 	extracted = &Certificate{
 		Raw:                   certificate.Raw,
 		RawSubject:            certificate.RawSubject,
 		RawIssuer:             certificate.RawIssuer,
-		Subject:               subjectFromStdlib(&certificate.Subject),
-		Issuer:                subjectFromStdlib(&certificate.Issuer),
+		Subject:               subjectFrom(&certificate.Subject),
+		Issuer:                subjectFrom(&certificate.Issuer),
 		SerialNumber:          certificate.SerialNumber.String(),
 		NotBefore:             certificate.NotBefore,
 		NotAfter:              certificate.NotAfter,
@@ -204,34 +150,14 @@ func extractFromStdlib(certificate *x509.Certificate) (extracted *Certificate) {
 	return extracted
 }
 
-// subjectFromZCrypto converts a zcrypto pkix.Name into a Subject.
-//
-// Parameters:
-//   - name (*zcryptopkix.Name): the pkix name to convert.
-//
-// Returns:
-//   - subject (Subject): the converted subject.
-func subjectFromZCrypto(name *zcryptopkix.Name) (subject Subject) {
-	subject = Subject{
-		CommonName:         name.CommonName,
-		Organization:       append([]string(nil), name.Organization...),
-		OrganizationalUnit: append([]string(nil), name.OrganizationalUnit...),
-		Country:            append([]string(nil), name.Country...),
-		Locality:           append([]string(nil), name.Locality...),
-		Province:           append([]string(nil), name.Province...),
-	}
-
-	return subject
-}
-
-// subjectFromStdlib converts a standard library pkix.Name into a Subject.
+// subjectFrom converts a standard library pkix.Name into a Subject.
 //
 // Parameters:
 //   - name (*stdpkix.Name): the pkix name to convert.
 //
 // Returns:
 //   - subject (Subject): the converted subject.
-func subjectFromStdlib(name *stdpkix.Name) (subject Subject) {
+func subjectFrom(name *stdpkix.Name) (subject Subject) {
 	subject = Subject{
 		CommonName:         name.CommonName,
 		Organization:       append([]string(nil), name.Organization...),

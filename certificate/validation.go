@@ -136,6 +136,9 @@ func untrustedWith(chainDER [][]byte, host string, roots *x509.CertPool) (untrus
 // inconclusive ("unknown" status) is skipped in favor of the next source;
 // only an explicit "revoked" answer reports true.
 //
+// It is [RevokedContext] with a background context; use that form when the
+// caller needs to bound or cancel the network checks.
+//
 // Parameters:
 //   - chainDER ([][]byte): the DER certificate chain, leaf first, with the
 //     issuer second when present.
@@ -144,15 +147,33 @@ func untrustedWith(chainDER [][]byte, host string, roots *x509.CertPool) (untrus
 //   - revoked (bool): whether a responder explicitly revoked the leaf.
 //   - err (error): non-nil when the leaf cannot be parsed.
 func Revoked(chainDER [][]byte) (revoked bool, err error) {
+	return RevokedContext(context.Background(), chainDER)
+}
+
+// RevokedContext reports whether the leaf certificate has been revoked,
+// checking the certificate's OCSP responders first and falling back to its CRL
+// distribution points. A responder that is unreachable, empty, or
+// inconclusive ("unknown" status) is skipped in favor of the next source;
+// only an explicit "revoked" answer reports true.
+//
+// Parameters:
+//   - ctx (context.Context): bounds the OCSP and CRL requests.
+//   - chainDER ([][]byte): the DER certificate chain, leaf first, with the
+//     issuer second when present.
+//
+// Returns:
+//   - revoked (bool): whether a responder explicitly revoked the leaf.
+//   - err (error): non-nil when the leaf cannot be parsed.
+func RevokedContext(ctx context.Context, chainDER [][]byte) (revoked bool, err error) {
 	if len(chainDER) == 0 {
-		err = errors.New("cert.Revoked: invalid input, certificate chain is empty")
+		err = errors.New("cert.RevokedContext: invalid input, certificate chain is empty")
 
 		return false, err
 	}
 
 	leaf, err := x509.ParseCertificate(chainDER[0])
 	if err != nil {
-		err = fmt.Errorf("cert.Revoked: parsing leaf certificate: %w", err)
+		err = fmt.Errorf("cert.RevokedContext: parsing leaf certificate: %w", err)
 
 		return false, err
 	}
@@ -162,7 +183,7 @@ func Revoked(chainDER [][]byte) (revoked bool, err error) {
 	if len(chainDER) > 1 {
 		issuer, err = x509.ParseCertificate(chainDER[1])
 		if err != nil {
-			err = fmt.Errorf("cert.Revoked: parsing issuer certificate: %w", err)
+			err = fmt.Errorf("cert.RevokedContext: parsing issuer certificate: %w", err)
 
 			return false, err
 		}
@@ -175,7 +196,7 @@ func Revoked(chainDER [][]byte) (revoked bool, err error) {
 	for _, url := range leaf.OCSPServer {
 		var status int
 
-		status, ocspErr := fetchOCSPStatus(client, leaf, issuer, url)
+		status, ocspErr := fetchOCSPStatus(ctx, client, leaf, issuer, url)
 		if ocspErr != nil {
 			continue
 		}
@@ -189,7 +210,7 @@ func Revoked(chainDER [][]byte) (revoked bool, err error) {
 	}
 
 	for _, url := range leaf.CRLDistributionPoints {
-		revoked, crlErr := crlRevokes(client, leaf, url)
+		revoked, crlErr := crlRevokes(ctx, client, leaf, url)
 		if crlErr != nil {
 			continue
 		}
@@ -205,6 +226,7 @@ func Revoked(chainDER [][]byte) (revoked bool, err error) {
 // fetchOCSPStatus asks an OCSP responder about the leaf's status.
 //
 // Parameters:
+//   - ctx (context.Context): bounds the request.
 //   - client (*http.Client): the HTTP client.
 //   - leaf (*x509.Certificate): the certificate to check.
 //   - issuer (*x509.Certificate): the leaf's issuer.
@@ -213,13 +235,13 @@ func Revoked(chainDER [][]byte) (revoked bool, err error) {
 // Returns:
 //   - status (int): the OCSP status.
 //   - err (error): non-nil on any transport or verification failure.
-func fetchOCSPStatus(client *http.Client, leaf, issuer *x509.Certificate, url string) (status int, err error) {
+func fetchOCSPStatus(ctx context.Context, client *http.Client, leaf, issuer *x509.Certificate, url string) (status int, err error) {
 	request, err := ocsp.CreateRequest(leaf, issuer, nil)
 	if err != nil {
 		return ocsp.Unknown, fmt.Errorf("creating OCSP request: %w", err)
 	}
 
-	httpRequest, err := http.NewRequestWithContext(context.Background(), http.MethodPost, url, bytes.NewReader(request))
+	httpRequest, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(request))
 	if err != nil {
 		return ocsp.Unknown, fmt.Errorf("building OCSP request for %q: %w", url, err)
 	}
@@ -251,6 +273,7 @@ func fetchOCSPStatus(client *http.Client, leaf, issuer *x509.Certificate, url st
 // crlRevokes checks whether a CRL distribution point revokes the leaf.
 //
 // Parameters:
+//   - ctx (context.Context): bounds the request.
 //   - client (*http.Client): the HTTP client.
 //   - leaf (*x509.Certificate): the certificate to check.
 //   - url (string): the CRL URL.
@@ -258,8 +281,8 @@ func fetchOCSPStatus(client *http.Client, leaf, issuer *x509.Certificate, url st
 // Returns:
 //   - revoked (bool): whether the CRL lists the leaf's serial number.
 //   - err (error): non-nil on any transport or parsing failure.
-func crlRevokes(client *http.Client, leaf *x509.Certificate, url string) (revoked bool, err error) {
-	request, err := http.NewRequestWithContext(context.Background(), http.MethodGet, url, http.NoBody)
+func crlRevokes(ctx context.Context, client *http.Client, leaf *x509.Certificate, url string) (revoked bool, err error) {
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, url, http.NoBody)
 	if err != nil {
 		return false, fmt.Errorf("building CRL request for %q: %w", url, err)
 	}

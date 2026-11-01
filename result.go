@@ -8,8 +8,7 @@ package tls
 //   - Host (string): the host inspected, as given (hostname or IP, without port).
 //   - IP (string): the IP address the connection used; empty when the
 //     connection never reached a peer.
-//   - Mode (Mode): the mode that produced the result; after an [ModeAuto]
-//     fallback this is the mode that actually succeeded.
+//   - Mode (Mode): the mode that produced the result.
 //   - TLSVersion (uint16): the negotiated TLS version; zero when no
 //     handshake completed.
 //   - CipherSuite (uint16): the negotiated cipher suite; zero when no
@@ -17,10 +16,6 @@ package tls
 //   - ALPN (string): the negotiated application protocol, if any.
 //   - Certificates ([][]byte): the DER-encoded certificate chain, leaf
 //     first; empty when the server offered none.
-//   - ClientHello ([]byte): the raw ClientHello message the client sent;
-//     captured in [ModeZTLS] and [ModeAuto] (when zcrypto ran) only.
-//   - ServerHello ([]byte): the raw ServerHello message the server sent;
-//     captured in [ModeZTLS] and [ModeAuto] (when zcrypto ran) only.
 //   - Error (error): the handshake failure, if the server was reached but
 //     the handshake did not complete.
 type Result struct {
@@ -31,7 +26,5 @@ type Result struct {
 	CipherSuite  uint16
 	ALPN         string
 	Certificates [][]byte
-	ClientHello  []byte
-	ServerHello  []byte
 	Error        error
 }

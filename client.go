@@ -76,8 +76,8 @@ func New(ofs ...OptionFunc) (client *Client, err error) {
 	return client, nil
 }
 
-// Inspect connects to host and captures the negotiated parameters,
-// certificates, and handshake messages according to the configured mode.
+// Inspect connects to host and captures the negotiated parameters and
+// certificates according to the configured mode.
 //
 // The host may be given with or without a port; without one, 443 is used.
 // Dialing failures (unreachable host, connection refused, exhausted
@@ -103,17 +103,13 @@ func (p *Client) Inspect(ctx context.Context, host string) (result Result, err e
 	address := net.JoinHostPort(host, port)
 
 	switch p.options.Mode {
-	case ModeAuto:
-		result, err = p.inspectWithAuto(ctx, host, address)
 	case ModeCTLS:
 		result, err = p.inspectWithCTLS(ctx, host, address)
-	case ModeZTLS:
-		result, err = p.inspectWithZTLS(ctx, host, address)
 	case ModeOpenSSL:
 		result, err = p.inspectWithOpenSSL(ctx, host, address)
 	default:
-		// Out-of-range modes behave as auto, like the zero value.
-		result, err = p.inspectWithAuto(ctx, host, address)
+		// Out-of-range modes behave as ctls, the zero value.
+		result, err = p.inspectWithCTLS(ctx, host, address)
 	}
 
 	if err != nil {
@@ -159,7 +155,7 @@ func splitHostPort(host string) (hostname, port string, err error) {
 
 const (
 	// defaultMode is the connection mode used when [WithMode] is not given.
-	defaultMode = ModeAuto
+	defaultMode = ModeCTLS
 	// defaultTimeout is the per-connection timeout used when [WithTimeout]
 	// is not given.
 	defaultTimeout = 5 * time.Second
@@ -187,9 +183,6 @@ const (
 //   - MaxVersion (uint16): the maximum TLS version to offer; zero keeps the
 //     library default.
 //   - NextProtos ([]string): the ALPN protocols to advertise.
-//   - PreHandshake (bool): abort the zcrypto handshake as soon as the
-//     ServerHello and certificates are captured, skipping the client's
-//     key exchange (effective for TLS 1.2 and below).
 //   - Proxy (string): a SOCKS5 proxy address (host:port); empty disables
 //     proxying.
 //   - OpenSSLBinary (string): the OpenSSL binary used by [ModeOpenSSL].
@@ -201,7 +194,6 @@ type Options struct {
 	MinVersion    uint16
 	MaxVersion    uint16
 	NextProtos    []string
-	PreHandshake  bool
 	Proxy         string
 	OpenSSLBinary string
 }
@@ -217,11 +209,10 @@ type OptionFunc func(opts *Options)
 
 // WithMode sets the TLS connection mode.
 //
-// The default is [ModeAuto].
+// The default is [ModeCTLS].
 //
 // Parameters:
-//   - mode (Mode): the connection mode to use ([ModeAuto], [ModeCTLS],
-//     [ModeZTLS], or [ModeOpenSSL]).
+//   - mode (Mode): the connection mode to use ([ModeCTLS] or [ModeOpenSSL]).
 //
 // Returns:
 //   - of (Option): an OptionFunc that updates the Mode field of the options.
@@ -327,28 +318,9 @@ func WithNextProtos(nextProtos ...string) OptionFunc {
 	}
 }
 
-// WithPreHandshake enables early termination of the zcrypto handshake: the
-// connection is closed as soon as the ServerHello and server certificates
-// are captured, before the client's key exchange completes. This makes
-// certificate gathering faster and lighter on the server.
-//
-// Pre-handshake applies to [ModeZTLS] and [ModeAuto] only and is effective
-// for TLS 1.2 and below; TLS 1.3 completes normally.
-//
-// Parameters:
-//   - enabled (bool): whether to terminate the handshake early.
-//
-// Returns:
-//   - of (Option): an OptionFunc that updates the PreHandshake field of the options.
-func WithPreHandshake(enabled bool) OptionFunc {
-	return func(opts *Options) {
-		opts.PreHandshake = enabled
-	}
-}
-
 // WithProxy sets a SOCKS5 proxy for the connection.
 //
-// The proxy is used by the zcrypto, crypto/tls, and JARM connections alike.
+// The proxy is used by the crypto/tls and JARM connections alike.
 //
 // Parameters:
 //   - proxyAddress (string): the SOCKS5 proxy address (e.g., "127.0.0.1:9050").

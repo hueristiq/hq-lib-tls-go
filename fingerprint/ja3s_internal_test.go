@@ -90,3 +90,12 @@ func TestJA3SErrorPaths(t *testing.T) {
 		})
 	}
 }
+
+func FuzzJA3S(f *testing.F) {
+	f.Add([]byte{0x02, 0x00})
+	f.Add([]byte{})
+
+	f.Fuzz(func(_ *testing.T, data []byte) {
+		_, _ = JA3S(data)
+	})
+}

@@ -123,25 +123,23 @@ func TestOptionSetters(t *testing.T) {
 
 	opts := &Options{}
 
-	WithMode(ModeZTLS)(opts)
+	WithMode(ModeCTLS)(opts)
 	WithTimeout(time.Second)(opts)
 	WithServerName("example.com")(opts)
 	WithCipherSuites([]uint16{0x1301})(opts)
 	WithMinVersion(tls.VersionTLS12)(opts)
 	WithMaxVersion(tls.VersionTLS13)(opts)
 	WithNextProtos("h2", "http/1.1")(opts)
-	WithPreHandshake(true)(opts)
 	WithProxy("127.0.0.1:9050")(opts)
 	WithOpenSSLBinary("/usr/bin/openssl")(opts)
 
-	assert.Equal(t, ModeZTLS, opts.Mode)
+	assert.Equal(t, ModeCTLS, opts.Mode)
 	assert.Equal(t, time.Second, opts.Timeout)
 	assert.Equal(t, "example.com", opts.ServerName)
 	assert.Equal(t, []uint16{0x1301}, opts.CipherSuites)
 	assert.Equal(t, uint16(tls.VersionTLS12), opts.MinVersion)
 	assert.Equal(t, uint16(tls.VersionTLS13), opts.MaxVersion)
 	assert.Equal(t, []string{"h2", "http/1.1"}, opts.NextProtos)
-	assert.True(t, opts.PreHandshake)
 	assert.Equal(t, "127.0.0.1:9050", opts.Proxy)
 	assert.Equal(t, "/usr/bin/openssl", opts.OpenSSLBinary)
 }

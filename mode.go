@@ -9,62 +9,45 @@ import (
 type Mode int
 
 const (
-	// ModeAuto attempts the connection with zcrypto ([ModeZTLS]) and falls
-	// back to the standard library ([ModeCTLS]) when zcrypto fails. It is
-	// the default and maximizes coverage across old and unusual servers.
-	ModeAuto Mode = iota
-	// ModeCTLS dials through the Go standard library's crypto/tls. It has
-	// no raw handshake capture, so fingerprints are unavailable.
-	ModeCTLS
-	// ModeZTLS dials through zmap/zcrypto, capturing the raw ClientHello
-	// and ServerHello messages. It tolerates older TLS versions and
-	// malformed servers that crypto/tls rejects.
-	ModeZTLS
+	// ModeCTLS dials through the Go standard library's crypto/tls. It is the
+	// zero value and the default.
+	ModeCTLS Mode = iota
 	// ModeOpenSSL shells out to the OpenSSL binary (s_client) and parses
 	// its session output.
 	ModeOpenSSL
 )
 
-// String returns the CLI-facing name of the mode: "auto", "ctls", "ztls",
-// or "openssl". Modes outside the enumerated set render as "auto", the
-// zero value's name.
+// String returns the CLI-facing name of the mode: "ctls" or "openssl".
+// Modes outside the enumerated set render as "ctls", the zero value's name.
 //
 // Returns:
 //   - name (string): the mode's name.
 func (m Mode) String() (name string) {
 	switch m {
-	case ModeAuto:
-		name = "auto"
 	case ModeCTLS:
 		name = "ctls"
-	case ModeZTLS:
-		name = "ztls"
 	case ModeOpenSSL:
 		name = "openssl"
 	default:
-		name = "auto"
+		name = "ctls"
 	}
 
 	return name
 }
 
-// ParseMode converts a mode name into a [Mode]. It accepts "auto", "ctls",
-// "ztls", and "openssl".
+// ParseMode converts a mode name into a [Mode]. It accepts "ctls" and
+// "openssl", plus the empty string for [ModeCTLS].
 //
 // Parameters:
 //   - name (string): the mode name to parse.
 //
 // Returns:
-//   - mode (Mode): the parsed mode; [ModeAuto] when name is empty.
+//   - mode (Mode): the parsed mode; [ModeCTLS] when name is empty.
 //   - err (error): non-nil when name is not a recognized mode.
 func ParseMode(name string) (mode Mode, err error) {
 	switch strings.ToLower(name) {
-	case "", "auto":
-		mode = ModeAuto
-	case "ctls":
+	case "", "ctls":
 		mode = ModeCTLS
-	case "ztls":
-		mode = ModeZTLS
 	case "openssl":
 		mode = ModeOpenSSL
 	default:

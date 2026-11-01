@@ -18,8 +18,6 @@ func TestResultFields(t *testing.T) {
 		CipherSuite:  0x1301,
 		ALPN:         "h2",
 		Certificates: [][]byte{{0x01}},
-		ClientHello:  []byte{0x02},
-		ServerHello:  []byte{0x03},
 		Error:        errors.New("handshake failed"),
 	}
 
@@ -30,7 +28,5 @@ func TestResultFields(t *testing.T) {
 	assert.Equal(t, uint16(0x1301), result.CipherSuite)
 	assert.Equal(t, "h2", result.ALPN)
 	assert.Equal(t, [][]byte{{0x01}}, result.Certificates)
-	assert.Equal(t, []byte{0x02}, result.ClientHello)
-	assert.Equal(t, []byte{0x03}, result.ServerHello)
 	assert.EqualError(t, result.Error, "handshake failed")
 }

@@ -4,11 +4,9 @@
 //
 // The package works on raw DER chains (leaf first), the shape produced by
 // [Result], and has no dependency on the root package itself.
-// Parsing goes through zmap/zcrypto's tolerant x509 first and falls back
-// to the standard library, so certificates that crypto/x509 rejects can
-// still be inspected; trust and revocation checks deliberately use the
-// standard library, because they ask "would a normal client accept this?"
-// rather than "what does this say?".
+// Parsing uses the standard library's crypto/x509, like the trust and
+// revocation checks: it asks "would a normal client accept this?" rather
+// than trying to decode malformed certificates.
 //
 // # Entry points
 //

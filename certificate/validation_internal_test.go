@@ -1,6 +1,7 @@
 package certificate
 
 import (
+	"context"
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -322,6 +323,13 @@ func TestRevokedValidation(t *testing.T) {
 	revoked, err = Revoked([][]byte{withUnreachableCRL.Raw, caCertificate.Raw})
 	require.NoError(t, err)
 	assert.False(t, revoked, "an unreachable CRL is skipped")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	revoked, err = RevokedContext(ctx, [][]byte{withUnreachableOCSP.Raw, caCertificate.Raw})
+	require.NoError(t, err)
+	assert.False(t, revoked, "a canceled context skips the responder")
 }
 
 func TestRevokedUnknownOCSPStatusFallsThrough(t *testing.T) {
@@ -369,21 +377,21 @@ func TestFetchOCSPStatusFailurePaths(t *testing.T) {
 
 		brokenIssuer := &x509.Certificate{RawSubjectPublicKeyInfo: []byte("broken")}
 
-		_, err := fetchOCSPStatus(client, leaf, brokenIssuer, "http://example.com")
+		_, err := fetchOCSPStatus(context.Background(), client, leaf, brokenIssuer, "http://example.com")
 		require.ErrorContains(t, err, "creating OCSP request")
 	})
 
 	t.Run("invalid URL", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := fetchOCSPStatus(client, leaf, caCertificate, "://bad")
+		_, err := fetchOCSPStatus(context.Background(), client, leaf, caCertificate, "://bad")
 		require.ErrorContains(t, err, "building OCSP request")
 	})
 
 	t.Run("transport failure", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := fetchOCSPStatus(client, leaf, caCertificate, "http://127.0.0.1:1")
+		_, err := fetchOCSPStatus(context.Background(), client, leaf, caCertificate, "http://127.0.0.1:1")
 		require.ErrorContains(t, err, "posting OCSP request")
 	})
 
@@ -392,7 +400,7 @@ func TestFetchOCSPStatusFailurePaths(t *testing.T) {
 
 		server := truncatedBodyServer(t)
 
-		_, err := fetchOCSPStatus(client, leaf, caCertificate, server.URL)
+		_, err := fetchOCSPStatus(context.Background(), client, leaf, caCertificate, server.URL)
 		require.ErrorContains(t, err, "reading OCSP response")
 	})
 
@@ -404,7 +412,7 @@ func TestFetchOCSPStatusFailurePaths(t *testing.T) {
 		}))
 		defer server.Close()
 
-		_, err := fetchOCSPStatus(client, leaf, caCertificate, server.URL)
+		_, err := fetchOCSPStatus(context.Background(), client, leaf, caCertificate, server.URL)
 		require.ErrorContains(t, err, "parsing OCSP response")
 	})
 }
@@ -420,14 +428,14 @@ func TestCRLRevokesFailurePaths(t *testing.T) {
 	t.Run("invalid URL", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := crlRevokes(client, leaf, "://bad")
+		_, err := crlRevokes(context.Background(), client, leaf, "://bad")
 		require.ErrorContains(t, err, "building CRL request")
 	})
 
 	t.Run("transport failure", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := crlRevokes(client, leaf, "http://127.0.0.1:1")
+		_, err := crlRevokes(context.Background(), client, leaf, "http://127.0.0.1:1")
 		require.ErrorContains(t, err, "fetching CRL")
 	})
 
@@ -436,7 +444,7 @@ func TestCRLRevokesFailurePaths(t *testing.T) {
 
 		server := truncatedBodyServer(t)
 
-		_, err := crlRevokes(client, leaf, server.URL)
+		_, err := crlRevokes(context.Background(), client, leaf, server.URL)
 		require.ErrorContains(t, err, "reading CRL")
 	})
 
@@ -448,7 +456,7 @@ func TestCRLRevokesFailurePaths(t *testing.T) {
 		}))
 		defer server.Close()
 
-		_, err := crlRevokes(client, leaf, server.URL)
+		_, err := crlRevokes(context.Background(), client, leaf, server.URL)
 		require.ErrorContains(t, err, "parsing CRL")
 	})
 
@@ -486,7 +494,7 @@ func TestCRLRevokesFailurePaths(t *testing.T) {
 		}))
 		defer server.Close()
 
-		revoked, err := crlRevokes(client, leaf, server.URL)
+		revoked, err := crlRevokes(context.Background(), client, leaf, server.URL)
 		require.NoError(t, err)
 		assert.False(t, revoked, "a CRL without the leaf's serial does not revoke it")
 	})

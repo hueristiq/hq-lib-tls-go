@@ -2,39 +2,37 @@
 
 ![made with go](https://img.shields.io/badge/made%20with-Go-1E90FF.svg) [![go reference](https://pkg.go.dev/badge/github.com/hueristiq/hq-lib-tls-go.svg)](https://pkg.go.dev/github.com/hueristiq/hq-lib-tls-go) [![license](https://img.shields.io/badge/license-MIT-gray.svg?color=1E90FF)](https://github.com/hueristiq/hq-lib-tls-go/blob/main/LICENSE) ![maintenance](https://img.shields.io/badge/maintained%3F-yes-1E90FF.svg) [![open issues](https://img.shields.io/github/issues-raw/hueristiq/hq-lib-tls-go.svg?style=flat&color=1E90FF)](https://github.com/hueristiq/hq-lib-tls-go/issues?q=is:issue+is:open) [![closed issues](https://img.shields.io/github/issues-closed-raw/hueristiq/hq-lib-tls-go.svg?style=flat&color=1E90FF)](https://github.com/hueristiq/hq-lib-tls-go/issues?q=is:issue+is:closed)
 
-`hq-lib-tls-go` is a [Go](https://golang.org/) package for serving and inspecting TLS: generating, managing, and signing X.509 certificates on the server side, and connecting to, fingerprinting, and analyzing remote TLS servers on the client side.
+`hq-lib-tls-go` is a [Go](https://golang.org/) package for serving and inspecting TLS.
 
-## Table of Contents
+## Resources
 
 - [Features](#features)
 - [Installation](#installation)
 - [Usage](#usage)
-	- [Generating a CA Certificate](#generating-a-ca-certificate)
-	- [Choosing the Key Algorithm](#choosing-the-key-algorithm)
-	- [Loading a Certificate from Files](#loading-a-certificate-from-files)
-	- [Loading a CA from PEM Bytes](#loading-a-ca-from-pem-bytes)
-	- [Generating a TLS Certificate](#generating-a-tls-certificate)
-	- [Signing a Certificate Signing Request (CSR)](#signing-a-certificate-signing-request-csr)
-	- [Configuring a TLS Server with SNI](#configuring-a-tls-server-with-sni)
-	- [Restricting Issuance to Known Hosts](#restricting-issuance-to-known-hosts)
-	- [Connecting to a TLS Server](#connecting-to-a-tls-server)
-	- [Computing JA3/JA3S Fingerprints](#computing-ja3ja3s-fingerprints)
-	- [Computing the JARM Fingerprint](#computing-the-jarm-fingerprint)
-	- [Analyzing Certificates](#analyzing-certificates)
+	- [Generating a CA certificate](#generating-a-ca-certificate)
+	- [Choosing the key algorithm](#choosing-the-key-algorithm)
+	- [Loading a certificate from files](#loading-a-certificate-from-files)
+	- [Loading a CA from PEM bytes](#loading-a-ca-from-pem-bytes)
+	- [Generating a TLS certificate](#generating-a-tls-certificate)
+	- [Signing a certificate signing request (CSR)](#signing-a-certificate-signing-request-csr)
+	- [Configuring a TLS server with SNI](#configuring-a-tls-server-with-sni)
+	- [Restricting issuance to known hosts](#restricting-issuance-to-known-hosts)
+	- [Connecting to a TLS server](#connecting-to-a-tls-server)
+	- [Computing JA3/JA3S fingerprints](#computing-ja3ja3s-fingerprints)
+	- [Computing the JARM fingerprint](#computing-the-jarm-fingerprint)
+	- [Analyzing certificates](#analyzing-certificates)
 - [Contributing](#contributing)
 - [Licensing](#licensing)
 
 ## Features
 
-- **Self-Signed CA Generation:** Create CA certificates with custom subject, validity, and key algorithm (RSA-2048, ECDSA P-256, or Ed25519).
-- **TLS Certificate Issuance:** Issue leaf certificates for DNS names, IPs, emails, or URIs, with keys inheriting the CA's algorithm.
-- **Dynamic TLS Configuration:** SNI-driven per-host certificate generation, TLS 1.2 minimum, HTTP/2 and HTTP/1.1 ALPN.
-- **Opt-In Certificate Caching:** Pluggable caching via the `authority/cache` package; without it, certificates are regenerated per request.
-- **SNI Allowlist:** Restrict dynamic issuance to known hostnames with `WithAllowedHosts`, bounding CPU use on Internet-facing servers.
-- **Configurable Connection Modes:** Dial through the standard library's `crypto/tls` (`ctls`) or the OpenSSL binary (`openssl`).
-- **Fingerprints:** JA3 and JA3S segments computed from handshake message bytes you supply, and the JARM fingerprint via its ten crafted ClientHello probes.
-- **Certificate Analysis:** Tolerant chain parsing, subject/issuer metadata, hostname coverage, digests, and trust/revocation checks.
-- **Cipher Classification:** An embedded cipher-suite security table (insecure/weak/secure/recommended), generated from the ciphersuite.info dataset.
+- **CA generation:** create self-signed CAs with custom subject, validity, and RSA-2048, ECDSA P-256, or Ed25519 keys.
+- **Certificate issuance:** issue leaf certificates for DNS names, IPs, emails, or URIs, with keys inheriting the CA algorithm.
+- **SNI and caching:** per-host certificate generation, TLS 1.2 minimum, HTTP/2 or HTTP/1.1 ALPN, an allowlist through `WithAllowedHosts`, and optional caching through `authority/cache`.
+- **Connection modes:** dial through `crypto/tls` or the OpenSSL `s_client` binary.
+- **Fingerprints:** compute JA3 and JA3S segments from handshake bytes, and JARM from ten crafted ClientHello probes.
+- **Certificate analysis:** tolerant chain parsing, subject and issuer metadata, hostname coverage, digests, and trust or revocation checks.
+- **Cipher classification:** an embedded table marks suites insecure, weak, secure, or recommended.
 
 ## Installation
 
@@ -44,7 +42,7 @@ To install `hq-lib-tls-go`, run the following command in your Go project:
 go get github.com/hueristiq/hq-lib-tls-go@latest
 ```
 
-Requires Go 1.26 or later.
+Requires Go 1.26.0 or later.
 
 ## Usage
 
@@ -62,7 +60,7 @@ import (
 
 The snippets below are illustrative.
 
-### Generating a CA Certificate
+### Generating a CA certificate
 
 Use `GenerateCACertificatePrivateKey` to create a self-signed CA certificate and its private key. By default it generates a 2048-bit RSA key; see [Choosing the Key Algorithm](#choosing-the-key-algorithm) to select ECDSA or Ed25519. Persist the result to PEM files with `SaveCertificatePrivateKeyToFiles`.
 
@@ -96,9 +94,9 @@ func main() {
 }
 ```
 
-### Choosing the Key Algorithm
+### Choosing the key algorithm
 
-Pass `WithCAKeyType` to control the CA's private key algorithm. Because every leaf certificate inherits the CA's algorithm, an ECDSA or Ed25519 CA also makes per-host issuance faster — useful for the SNI server below, which generates a key per hostname.
+Pass `WithCAKeyType` to control the CA's private key algorithm. Every leaf certificate inherits the CA's algorithm, so an ECDSA or Ed25519 CA also makes per-host issuance faster. That helps the SNI server below, which generates a key per hostname.
 
 ```go
 caCert, caKey, err := hqgotlsauthority.GenerateCACertificatePrivateKey(
@@ -109,7 +107,7 @@ caCert, caKey, err := hqgotlsauthority.GenerateCACertificatePrivateKey(
 
 Available key types: `KeyTypeRSA2048` (default), `KeyTypeECDSAP256`, and `KeyTypeEd25519`.
 
-### Loading a Certificate from Files
+### Loading a certificate from files
 
 Load a certificate and private key from PEM files with `LoadCertificatePrivateKeyFromFiles`.
 
@@ -132,7 +130,7 @@ func main() {
 }
 ```
 
-### Loading a CA from PEM Bytes
+### Loading a CA from PEM bytes
 
 When the certificate and key are already in memory (for example, read from a secret store), construct the authority directly with `NewFromPEM`.
 
@@ -143,9 +141,9 @@ if err != nil {
 }
 ```
 
-### Generating a TLS Certificate
+### Generating a TLS certificate
 
-Use a `CertificateAuthority` to issue a leaf certificate for specific hosts. Each host is routed into the matching Subject Alternative Name field — DNS name, IP address, email address, or URI.
+Use a `CertificateAuthority` to issue a leaf certificate for specific hosts. Each host is routed into the matching Subject Alternative Name field: DNS name, IP address, email address, or URI.
 
 ```go
 package main
@@ -199,9 +197,9 @@ clientCert, clientKey, err := ca.GenerateTLSCertificate(
 )
 ```
 
-### Signing a Certificate Signing Request (CSR)
+### Signing a certificate signing request (CSR)
 
-`SignCSR` signs a CSR with the CA's private key: the client keeps its private key, and the CA never sees it. The CSR's signature is verified before signing, its subject alternative names are copied to the certificate, and the default extended key usage is client authentication — suited to issuing client certificates for mutual TLS. The same `IssueOption`s as `GenerateTLSCertificate` override the defaults.
+`SignCSR` signs a CSR with the CA's private key: the client keeps its private key, and the CA never sees it. The CSR's signature is verified before signing, its subject alternative names are copied to the certificate, and the default extended key usage is client authentication, suited to issuing client certificates for mutual TLS. The same `IssueOption`s as `GenerateTLSCertificate` override the defaults.
 
 ```go
 package main
@@ -259,13 +257,13 @@ func main() {
 }
 ```
 
-### Configuring a TLS Server with SNI
+### Configuring a TLS server with SNI
 
 `NewTLSConfig` returns a `*tls.Config` that generates a certificate for whatever hostname the client requests via SNI. Caching is opt-in: pass a cache from the `cache` package to `New` via `WithCache` to reuse certificates across connections, and tune entry expiry with `WithCacheMaxAge`. Without a cache, a certificate is regenerated for every request.
 
-**Production use:** the cache is off by default — enable it with `WithCache(hqgotlscache.NewInMemory(maxSize))`, sized to the number of distinct hosts served, and set `WithCacheMaxAge` well below the leaf validity (24 hours for SNI-driven issuance). For dynamic per-host issuance, consider `WithCAKeyType(KeyTypeECDSAP256)`: ECDSA-P256 leaf generation is markedly faster than RSA-2048.
+**Production use:** the cache is off by default. Enable it with `WithCache(hqgotlscache.NewInMemory(maxSize))`, sized to the number of distinct hosts served, and set `WithCacheMaxAge` well below the leaf validity (24 hours for SNI-driven issuance). For dynamic per-host issuance, consider `WithCAKeyType(KeyTypeECDSAP256)`: ECDSA-P256 leaf generation is faster than RSA-2048.
 
-Note that the `GetCertificate` hook mints a new key pair for every distinct requested hostname, so an Internet-facing server should restrict issuance — see [Restricting Issuance to Known Hosts](#restricting-issuance-to-known-hosts) — to avoid CPU exhaustion from unbounded certificate generation.
+The `GetCertificate` hook mints a new key pair for every distinct requested hostname. An Internet-facing server should restrict issuance (see [Restricting issuance to known hosts](#restricting-issuance-to-known-hosts)) to avoid CPU exhaustion from unbounded certificate generation.
 
 ```go
 package main
@@ -325,9 +323,9 @@ Because the certificates are signed by a self-signed CA, clients must trust `caC
 
 The returned configuration requires TLS 1.2 or higher and advertises the `h2` and `http/1.1` ALPN protocols by default; pass `WithNextProtos` to change them, or call it with no arguments to disable ALPN for non-HTTP servers. To get the same bundled certificate (leaf plus CA chain, with the `Leaf` field populated) outside of a server, call `ca.TLSCertificate("example.com")`.
 
-### Restricting Issuance to Known Hosts
+### Restricting issuance to known hosts
 
-The `GetCertificate` hook mints a new key pair for every distinct requested hostname. On an Internet-facing server, restrict issuance to the hostnames you actually serve with `WithAllowedHosts`; a handshake for any other name fails before any key generation happens:
+The `GetCertificate` hook mints a new key pair for every distinct requested hostname. On an Internet-facing server, restrict issuance to the hostnames you serve with `WithAllowedHosts`; a handshake for any other name fails before any key generation happens:
 
 ```go
 tlsConfig := ca.NewTLSConfig(hqgotlsauthority.WithAllowedHosts("example.com", "app.example.com"))
@@ -335,7 +333,7 @@ tlsConfig := ca.NewTLSConfig(hqgotlsauthority.WithAllowedHosts("example.com", "a
 
 Names are normalized exactly like requested SNI names (port stripped, case folded, trailing dot removed), so "Example.COM." and "example.com" are the same entry. A client that sends no SNI falls through to the wrapped configuration: `NewTLSConfig` errors, `NewTLSConfigWithHost` substitutes its default hostname. Calling `WithAllowedHosts` with no hosts rejects every SNI name.
 
-### Connecting to a TLS Server
+### Connecting to a TLS server
 
 The root package connects to a TLS server in one of two modes and returns one unified result: the negotiated version and cipher, the ALPN protocol, and the certificate chain as raw DER.
 
@@ -345,6 +343,7 @@ package main
 import (
 	"context"
 	"log"
+	"time"
 
 	hqgotls "github.com/hueristiq/hq-lib-tls-go"
 )
@@ -370,12 +369,12 @@ func main() {
 
 The modes:
 
-- `ModeCTLS` — the standard library's crypto/tls (default).
-- `ModeOpenSSL` — shells out to the OpenSSL binary (`s_client`); needs OpenSSL on PATH or `WithOpenSSLBinary`.
+- `ModeCTLS`: the standard library's crypto/tls (default).
+- `ModeOpenSSL`: shells out to the OpenSSL binary (`s_client`); needs OpenSSL on PATH or `WithOpenSSLBinary`.
 
 `WithServerName`, `WithCipherSuites`, `WithMinVersion`/`WithMaxVersion`, `WithNextProtos`, and `WithProxy` (SOCKS5) cover the remaining dialing knobs.
 
-### Computing JA3/JA3S Fingerprints
+### Computing JA3/JA3S fingerprints
 
 The `fingerprint` package turns handshake message bytes into JA3 and JA3S segments and their canonical MD5 digests. Supply a ClientHello or ServerHello captured elsewhere, for example from a packet capture:
 
@@ -404,11 +403,17 @@ func fingerprintHandshake(clientHelloBytes, serverHelloBytes []byte) error {
 
 	return nil
 }
+
+func main() {
+	if err := fingerprintHandshake(nil, nil); err != nil {
+		log.Fatal(err)
+	}
+}
 ```
 
-### Computing the JARM Fingerprint
+### Computing the JARM fingerprint
 
-`Client.JARM` sends the ten crafted ClientHello probes defined by the JARM specification over raw TCP and fuzzy-hashes the server's responses — no handshake completes:
+`Client.JARM` sends the ten crafted ClientHello probes defined by the JARM specification over raw TCP and fuzzy-hashes the server's responses. No handshake completes:
 
 ```go
 client, err := hqgotls.New(hqgotls.WithTimeout(5*time.Second))
@@ -424,7 +429,7 @@ if err != nil {
 log.Printf("JARM: %s", jarm)
 ```
 
-### Analyzing Certificates
+### Analyzing certificates
 
 The `certificate` package parses the chain an inspection captured, inspects it, and checks trust and revocation:
 

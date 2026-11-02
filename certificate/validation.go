@@ -9,6 +9,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"os"
 	"time"
 
 	"golang.org/x/crypto/ocsp"
@@ -81,27 +82,46 @@ func Untrusted(chainDER [][]byte, host string) (untrusted bool, err error) {
 	return untrustedWith(chainDER, host, roots)
 }
 
-// untrustedWith reports whether the chain fails verification against the
-// given root pool, treating a pool of nil as the system roots.
+// Verify checks chainDER for host against roots. A nil roots pool selects the
+// system roots. The leaf must carry the server-auth extended key usage, as a
+// normal client would require.
 //
 // Parameters:
 //   - chainDER ([][]byte): the DER certificate chain, leaf first.
-//   - host (string): the hostname the client would connect to.
-//   - roots (*x509.CertPool): the roots to verify against; nil selects the system roots.
+//   - host (string): the hostname to verify; a port, when present, is ignored.
+//   - roots (*x509.CertPool): the roots to verify against; nil selects the
+//     system roots.
 //
 // Returns:
-//   - untrusted (bool): whether the chain fails verification.
-//   - err (error): non-nil when the input is empty.
-func untrustedWith(chainDER [][]byte, host string, roots *x509.CertPool) (untrusted bool, err error) {
-	if len(chainDER) == 0 {
-		err = errors.New("cert.Untrusted: invalid input, certificate chain is empty")
+//   - err (error): nil when the chain is valid; otherwise the verification
+//     failure.
+func Verify(chainDER [][]byte, host string, roots *x509.CertPool) (err error) {
+	return verifyChain(chainDER, host, roots)
+}
 
-		return false, err
+// verifyChain is the shared verification path behind [Verify] and
+// [untrustedWith].
+//
+// Parameters:
+//   - chainDER ([][]byte): the DER certificate chain, leaf first.
+//   - host (string): the hostname to verify.
+//   - roots (*x509.CertPool): the roots to verify against; nil selects the
+//     system roots.
+//
+// Returns:
+//   - err (error): nil when the chain is valid.
+func verifyChain(chainDER [][]byte, host string, roots *x509.CertPool) (err error) {
+	if len(chainDER) == 0 {
+		err = errors.New("cert.Verify: invalid input, certificate chain is empty")
+
+		return
 	}
 
 	leaf, err := x509.ParseCertificate(chainDER[0])
 	if err != nil {
-		return true, nil
+		err = fmt.Errorf("cert.Verify: parsing leaf certificate: %w", err)
+
+		return
 	}
 
 	intermediates := x509.NewCertPool()
@@ -123,7 +143,61 @@ func untrustedWith(chainDER [][]byte, host string, roots *x509.CertPool) (untrus
 		KeyUsages:     []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 		Roots:         roots,
 	})
+
+	return
+}
+
+// LoadCAPool reads a PEM file and returns its certificates as a root pool.
+//
+// Parameters:
+//   - path (string): the PEM file path.
+//
+// Returns:
+//   - pool (*x509.CertPool): the parsed roots.
+//   - err (error): non-nil when the file cannot be read or contains no
+//     certificates.
+func LoadCAPool(path string) (pool *x509.CertPool, err error) {
+	pemBytes, err := os.ReadFile(path) //nolint:gosec // path is the caller-specified CA file.
 	if err != nil {
+		err = fmt.Errorf("cert.LoadCAPool: %w", err)
+
+		return
+	}
+
+	pool = x509.NewCertPool()
+
+	if !pool.AppendCertsFromPEM(pemBytes) {
+		err = errors.New("cert.LoadCAPool: no certificates parsed from CA certificate file")
+
+		return
+	}
+
+	return
+}
+
+// untrustedWith reports whether the chain fails verification against the
+// given root pool, treating a pool of nil as the system roots.
+//
+// Parameters:
+//   - chainDER ([][]byte): the DER certificate chain, leaf first.
+//   - host (string): the hostname the client would connect to.
+//   - roots (*x509.CertPool): the roots to verify against; nil selects the system roots.
+//
+// Returns:
+//   - untrusted (bool): whether the chain fails verification.
+//   - err (error): non-nil when the input is empty.
+func untrustedWith(chainDER [][]byte, host string, roots *x509.CertPool) (untrusted bool, err error) {
+	if len(chainDER) == 0 {
+		err = errors.New("cert.Untrusted: invalid input, certificate chain is empty")
+
+		return false, err
+	}
+
+	if _, parseErr := x509.ParseCertificate(chainDER[0]); parseErr != nil {
+		return true, nil
+	}
+
+	if err = verifyChain(chainDER, host, roots); err != nil {
 		return true, nil
 	}
 

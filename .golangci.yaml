@@ -113,6 +113,18 @@ linters:
         goconst:
             min-len: 2
             min-occurrences: 3
+        importas:
+            alias:
+                - pkg: github.com/hueristiq/hq-lib-tls-go
+                  alias: hqgotls
+                - pkg: github.com/hueristiq/hq-lib-tls-go/authority
+                  alias: hqgotlsauthority
+                - pkg: github.com/hueristiq/hq-lib-tls-go/authority/cache
+                  alias: hqgotlscache
+                - pkg: github.com/hueristiq/hq-lib-tls-go/certificate
+                  alias: hqgotlscertificate
+                - pkg: github.com/hueristiq/hq-lib-tls-go/fingerprint
+                  alias: hqgotlsfingerprint
         gocritic:
             enabled-tags:
                 - performance
@@ -124,6 +136,8 @@ linters:
                 - whyNoLint
         gocyclo:
             min-complexity: 10
+        testpackage:
+            skip-regexp: '(_internal|_bench|_fuzz)_test\.go$'
         whitespace:
             multi-if: true
             multi-func: true

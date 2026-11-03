@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"os/exec"
 	"strings"
@@ -110,9 +111,19 @@ func (p *Client) inspectWithOpenSSL(ctx context.Context, host, address string) (
 	command.Stderr = &output
 
 	// s_client commonly exits non-zero even after a perfectly good session
-	// (for example when the connection is closed), so the exit status is
-	// not authoritative; the parsed session output is.
-	_ = command.Run()
+	// (for example when the connection is closed), so a non-zero exit status
+	// is not authoritative; the parsed session output is. A failure to start
+	// the binary (missing executable, permission denied) is authoritative.
+	if err = command.Run(); err != nil {
+		var exitErr *exec.ExitError
+		if !errors.As(err, &exitErr) {
+			return result, fmt.Errorf("inspectWithOpenSSL: run %s: %w", p.options.OpenSSLBinary, err)
+		}
+	}
+
+	if err = ctx.Err(); err != nil {
+		return result, fmt.Errorf("inspectWithOpenSSL: %w", err)
+	}
 
 	session := output.String()
 

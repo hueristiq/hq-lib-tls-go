@@ -28,17 +28,17 @@
 //
 // Four functional option families configure the package:
 //
-//   - [CAOption] over [CAOptions] configures CA generation: subject, validity,
+//   - [CAOptionFunc] over [CAOptions] configures CA generation: subject, validity,
 //     and key algorithm. [WithCACommonName] is required; the validity defaults
 //     to 365 days and the key to [KeyTypeRSA2048].
-//   - [IssueOption] over [IssueOptions] configures leaf issuance and CSR signing:
+//   - [IssueOptionFunc] over [IssueOptions] configures leaf issuance and CSR signing:
 //     subject, validity, and extended key usages. The validity defaults to 365
 //     days and is clamped to the CA's expiry.
 //   - [TLSConfigMutator] configures the [crypto/tls.Config] returned by
 //     [CertificateAuthority.NewTLSConfig] and
 //     [CertificateAuthority.NewTLSConfigWithHost]; [WithNextProtos] and
 //     [WithAllowedHosts] cover ALPN and SNI allowlisting.
-//   - [Option] over [Options] configures the authority itself: the optional
+//   - [OptionFunc] over [Options] configures the authority itself: the optional
 //     certificate cache ([WithCache]) and its maximum age
 //     ([WithCacheMaxAge], one hour by default).
 //

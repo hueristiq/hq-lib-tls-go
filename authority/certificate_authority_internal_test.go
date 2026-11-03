@@ -38,10 +38,10 @@ var testKeyTypes = []struct {
 	{"ed25519", KeyTypeEd25519},
 }
 
-func newTestCACertificatePrivateKey(t *testing.T, ofs ...CAOption) (certificate *x509.Certificate, privateKey crypto.Signer) {
+func newTestCACertificatePrivateKey(t *testing.T, ofs ...CAOptionFunc) (certificate *x509.Certificate, privateKey crypto.Signer) {
 	t.Helper()
 
-	ofs = append([]CAOption{WithCACommonName("Test CA")}, ofs...)
+	ofs = append([]CAOptionFunc{WithCACommonName("Test CA")}, ofs...)
 
 	certificate, privateKey, err := GenerateCACertificatePrivateKey(ofs...)
 	require.NoError(t, err)
@@ -51,7 +51,7 @@ func newTestCACertificatePrivateKey(t *testing.T, ofs ...CAOption) (certificate 
 	return certificate, privateKey
 }
 
-func newTestAuthority(t *testing.T, ofs ...Option) (ca *CertificateAuthority) {
+func newTestAuthority(t *testing.T, ofs ...OptionFunc) (ca *CertificateAuthority) {
 	t.Helper()
 
 	caCertificate, caPrivateKey := newTestCACertificatePrivateKey(t)
@@ -274,11 +274,11 @@ func TestNewRejectsInvalidCacheOptions(t *testing.T) {
 
 	tests := []struct {
 		name        string
-		ofs         []Option
+		ofs         []OptionFunc
 		errContains string
 	}{
-		{"zero cache max age", []Option{WithCacheMaxAge(0)}, "cache max age must be positive"},
-		{"negative cache max age", []Option{WithCacheMaxAge(-time.Hour)}, "cache max age must be positive"},
+		{"zero cache max age", []OptionFunc{WithCacheMaxAge(0)}, "cache max age must be positive"},
+		{"negative cache max age", []OptionFunc{WithCacheMaxAge(-time.Hour)}, "cache max age must be positive"},
 	}
 
 	for _, tt := range tests {
@@ -918,14 +918,14 @@ func TestGenerateCACertificatePrivateKeyValidation(t *testing.T) {
 
 	tests := []struct {
 		name        string
-		ofs         []CAOption
+		ofs         []CAOptionFunc
 		errContains string
 	}{
 		{"missing common name", nil, "CommonName is empty"},
-		{"empty common name", []CAOption{WithCACommonName("")}, "CommonName is empty"},
-		{"zero validity duration", []CAOption{WithCACommonName("Test CA"), WithCAValidFor(0)}, "ValidFor duration must be positive"},
-		{"negative validity duration", []CAOption{WithCACommonName("Test CA"), WithCAValidFor(-time.Hour)}, "ValidFor duration must be positive"},
-		{"unsupported key type", []CAOption{WithCACommonName("Test CA"), WithCAKeyType(KeyType(99))}, "unsupported CA key type"},
+		{"empty common name", []CAOptionFunc{WithCACommonName("")}, "CommonName is empty"},
+		{"zero validity duration", []CAOptionFunc{WithCACommonName("Test CA"), WithCAValidFor(0)}, "ValidFor duration must be positive"},
+		{"negative validity duration", []CAOptionFunc{WithCACommonName("Test CA"), WithCAValidFor(-time.Hour)}, "ValidFor duration must be positive"},
+		{"unsupported key type", []CAOptionFunc{WithCACommonName("Test CA"), WithCAKeyType(KeyType(99))}, "unsupported CA key type"},
 	}
 
 	for _, tt := range tests {
@@ -967,15 +967,15 @@ func TestGenerateTLSCertificateValidation(t *testing.T) {
 		name        string
 		ca          *CertificateAuthority
 		hosts       []string
-		ofs         []IssueOption
+		ofs         []IssueOptionFunc
 		errContains string
 	}{
 		{"nil authority", nil, []string{"example.com"}, nil, "CertificateAuthority is nil"},
 		{"uninitialized authority", &CertificateAuthority{}, []string{"example.com"}, nil, "CertificateAuthority is not initialized"},
 		{"empty hosts list", ca, nil, nil, "hosts list is empty"},
 		{"empty hostname in hosts list", ca, []string{""}, nil, "empty hostname in hosts list"},
-		{"empty common name", ca, []string{"example.com"}, []IssueOption{WithTLSCommonName("")}, "CommonName is empty"},
-		{"non-positive validity duration", ca, []string{"example.com"}, []IssueOption{WithTLSValidFor(0)}, "ValidFor duration must be positive"},
+		{"empty common name", ca, []string{"example.com"}, []IssueOptionFunc{WithTLSCommonName("")}, "CommonName is empty"},
+		{"non-positive validity duration", ca, []string{"example.com"}, []IssueOptionFunc{WithTLSValidFor(0)}, "ValidFor duration must be positive"},
 		{"unsupported CA private key type", unsupportedKeyAuthority, []string{"example.com"}, nil, "unsupported CA private key type"},
 		{"RSA CA key too small to derive leaf key", tinyRSAKeyAuthority, []string{"example.com"}, nil, "generating RSA private key"},
 		{"ECDSA CA key with nil curve", nilCurveAuthority, []string{"example.com"}, nil, "creating TLS certificate"},
@@ -1237,7 +1237,7 @@ func TestSignCSRValidation(t *testing.T) {
 		name        string
 		ca          *CertificateAuthority
 		csr         *x509.CertificateRequest
-		ofs         []IssueOption
+		ofs         []IssueOptionFunc
 		errContains string
 	}{
 		{"nil authority", nil, validCSR, nil, "CertificateAuthority is nil"},
@@ -1245,7 +1245,7 @@ func TestSignCSRValidation(t *testing.T) {
 		{"nil CSR", ca, nil, nil, "CSR is nil"},
 		{"tampered CSR signature", ca, tamperedCSR, nil, "verifying CSR signature"},
 		{"empty common name", ca, emptyCNCSR, nil, "CommonName is empty"},
-		{"non-positive validity duration", ca, validCSR, []IssueOption{WithTLSValidFor(0)}, "ValidFor duration must be positive"},
+		{"non-positive validity duration", ca, validCSR, []IssueOptionFunc{WithTLSValidFor(0)}, "ValidFor duration must be positive"},
 	}
 
 	for _, tt := range tests {

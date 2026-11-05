@@ -94,8 +94,8 @@
 //
 // # Standards and safety
 //
-// Certificates follow RFC 5280 — random 128-bit serial numbers and SHA-256
-// subject key identifiers — and are PEM-encoded per RFC 7468. Leaf certificates
+// Certificates follow [RFC 5280](https://www.rfc-editor.org/info/rfc5280/) — random 128-bit serial numbers and SHA-256
+// subject key identifiers — and are PEM-encoded per [RFC 7468](https://www.rfc-editor.org/info/rfc7468/). Leaf certificates
 // are clamped to the CA's expiry so they never outlive their issuer, and
 // issuance fails when the requested validity starts at or after the CA's
 // expiry. TLS configs

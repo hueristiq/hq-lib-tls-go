@@ -243,8 +243,8 @@ func (ca *CertificateAuthority) CACertificatePrivateKey() (privateKey crypto.Sig
 	return ca.caCertificatePrivateKey
 }
 
-// isEmailAddress reports whether host is a bare RFC 5322 email address (e.g.,
-// "user@example.com"). The '@' gate lets plain DNS names skip the RFC 5322
+// isEmailAddress reports whether host is a bare [RFC 5322](https://www.rfc-editor.org/info/rfc5322/) email address (e.g.,
+// "user@example.com"). The '@' gate lets plain DNS names skip the [RFC 5322](https://www.rfc-editor.org/info/rfc5322/)
 // parser, which dominates host classification for the common case.
 //
 // Parameters:
@@ -1725,7 +1725,7 @@ func generateCACertificatePrivateKeyPEM(ops *operations, ofs ...CAOptionFunc) (c
 
 // CertificateToPEM converts an X.509 certificate to PEM format.
 //
-// The certificate is encoded as a PEM block with type "CERTIFICATE", as per RFC 7468. The resulting PEM data
+// The certificate is encoded as a PEM block with type "CERTIFICATE", as per [RFC 7468](https://www.rfc-editor.org/info/rfc7468/). The resulting PEM data
 // is returned as a byte slice for further use (e.g., writing to a file or network).
 //
 // Parameters:
@@ -1758,7 +1758,7 @@ func CertificateToPEM(certificate *x509.Certificate) (raw []byte, err error) {
 // PrivateKeyToPEM converts a private key to PEM format.
 //
 // The private key is marshaled to the appropriate format (PKCS#1 for RSA, EC for ECDSA, PKCS#8 for Ed25519) and encoded
-// as a PEM block with type "RSA PRIVATE KEY", "EC PRIVATE KEY", or "PRIVATE KEY", as per RFC 7468. The resulting PEM data
+// as a PEM block with type "RSA PRIVATE KEY", "EC PRIVATE KEY", or "PRIVATE KEY", as per [RFC 7468](https://www.rfc-editor.org/info/rfc7468/). The resulting PEM data
 // is returned as a byte slice.
 //
 // Parameters:
@@ -1835,7 +1835,7 @@ var serialNumberLimit = new(big.Int).Lsh(big.NewInt(1), 128)
 
 // generateSerialNumber creates a random serial number for use in X.509 certificates.
 //
-// Serial numbers are unique identifiers for certificates, and RFC 5280 requires them to be
+// Serial numbers are unique identifiers for certificates, and [RFC 5280](https://www.rfc-editor.org/info/rfc5280/) requires them to be
 // positive integers. This function generates a cryptographically secure random number with a
 // maximum bit length of 128 bits, redrawing until the value is strictly positive, ensuring
 // compliance with common certificate authority requirements.
@@ -1857,7 +1857,7 @@ func generateSerialNumber() (serialNumber *big.Int, err error) {
 //   - serialNumber (*big.Int): a pointer to a big.Int representing the generated serial number.
 //   - err (error): an error if random number generation fails; otherwise, nil.
 func generateSerialNumberWith(ops *operations) (serialNumber *big.Int, err error) {
-	// rand.Int may return zero, but RFC 5280 requires a positive serial number:
+	// rand.Int may return zero, but [RFC 5280](https://www.rfc-editor.org/info/rfc5280/) requires a positive serial number:
 	// redraw until the value is strictly positive.
 	for serialNumber == nil || serialNumber.Sign() <= 0 {
 		serialNumber, err = ops.randomInt(rand.Reader, serialNumberLimit)
@@ -1873,7 +1873,7 @@ func generateSerialNumberWith(ops *operations) (serialNumber *big.Int, err error
 
 // generateSubjectKeyID computes a Subject Key Identifier (SKI) from a given public key.
 //
-// The Subject Key Identifier is a SHA-256 hash of the public key's PKIX-encoded form, as specified in RFC 5280,
+// The Subject Key Identifier is a SHA-256 hash of the public key's PKIX-encoded form, as specified in [RFC 5280](https://www.rfc-editor.org/info/rfc5280/),
 // section 4.2.1.2. It is used to uniquely identify a public key in an X.509 certificate.
 //
 // Parameters:

@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-// greaseTable reports whether value is a reserved GREASE value (RFC 8701).
+// greaseTable reports whether value is a reserved GREASE value ([RFC 8701](https://www.rfc-editor.org/info/rfc8701/)).
 // GREASE identifiers carry no meaning and are dropped from fingerprints.
 //
 // Parameters:

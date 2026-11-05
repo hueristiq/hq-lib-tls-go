@@ -274,7 +274,7 @@ func normalizeHost(host string) (normalized string) {
 }
 
 // PEMBlock converts the certificate to a "CERTIFICATE" PEM block, per
-// RFC 7468.
+// [RFC 7468](https://www.rfc-editor.org/info/rfc7468/).
 //
 // Returns:
 //   - pemBytes ([]byte): the PEM-encoded certificate.

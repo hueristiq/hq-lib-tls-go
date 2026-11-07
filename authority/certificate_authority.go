@@ -1176,10 +1176,12 @@ func (ca *CertificateAuthority) generateAndCacheTLSCertificate(host string) (cer
 	}
 
 	if ca.cache != nil {
-		ca.cache.Set(host, &hqgotlscache.CertificateCacheEntry{
+		if err = ca.cache.Set(host, &hqgotlscache.CertificateCacheEntry{
 			Certificate: certificate,
 			CreatedAt:   time.Now(),
-		})
+		}); err != nil {
+			return nil, fmt.Errorf("authority.generateAndCacheTLSCertificate: caching TLS certificate for host %q: %w", host, err)
+		}
 	}
 
 	return certificate, nil

@@ -196,7 +196,10 @@ func (p *Client) sendJARMProbe(ctx context.Context, host, address string, parame
 		return jarmHello{}, nil
 	}
 
-	packet := buildJARMClientHello(host, parameters)
+	packet, err := buildJARMClientHello(host, parameters)
+	if err != nil {
+		return jarmHello{}, fmt.Errorf("client.sendJARMProbe: building probe: %w", err)
+	}
 
 	if _, err = conn.Write(packet); err != nil {
 		var netErr net.Error
@@ -235,7 +238,7 @@ func (p *Client) sendJARMProbe(ctx context.Context, host, address string, parame
 //
 // Returns:
 //   - packet ([]byte): the complete TLS record.
-func buildJARMClientHello(host string, parameters *jarmProbeParameters) (packet []byte) {
+func buildJARMClientHello(host string, parameters *jarmProbeParameters) (packet []byte, err error) {
 	recordVersion := []byte{0x03, 0x03}
 
 	var clientHello []byte
@@ -251,11 +254,23 @@ func buildJARMClientHello(host string, parameters *jarmProbeParameters) (packet 
 		clientHello = []byte{0x03, 0x03}
 	}
 
-	clientHello = append(clientHello, randomBytes(rand.Reader, 32)...)
+	random, err := randomBytes(rand.Reader, 32)
+	if err != nil {
+		return nil, err
+	}
 
-	sessionID := randomBytes(rand.Reader, 32)
+	clientHello = append(clientHello, random...)
 
-	clientHello = appendLength8(clientHello, len(sessionID))
+	sessionID, err := randomBytes(rand.Reader, 32)
+	if err != nil {
+		return nil, err
+	}
+
+	clientHello, err = appendLength8(clientHello, len(sessionID))
+	if err != nil {
+		return nil, err
+	}
+
 	clientHello = append(clientHello, sessionID...)
 
 	ciphers := jarmCipherList(parameters)
@@ -268,7 +283,10 @@ func buildJARMClientHello(host string, parameters *jarmProbeParameters) (packet 
 		ciphers = append([]uint16{randomGrease(rand.Reader)}, ciphers...)
 	}
 
-	clientHello = appendLength16(clientHello, len(ciphers)*2)
+	clientHello, err = appendLength16(clientHello, len(ciphers)*2)
+	if err != nil {
+		return nil, err
+	}
 
 	for _, cipher := range ciphers {
 		clientHello = appendUint16(clientHello, cipher)
@@ -276,18 +294,34 @@ func buildJARMClientHello(host string, parameters *jarmProbeParameters) (packet 
 
 	clientHello = append(clientHello, 0x01, 0x00) // compression: one method, null
 
-	clientHello = append(clientHello, buildJARMExtensions(host, parameters)...)
+	extensions, err := buildJARMExtensions(host, parameters)
+	if err != nil {
+		return nil, err
+	}
 
-	handshake := []byte{0x01}
-	handshake = appendLength24(handshake, len(clientHello))
+	clientHello = append(clientHello, extensions...)
+
+	handshake := make([]byte, 1, 1+len(clientHello))
+	handshake[0] = 0x01
+
+	handshake, err = appendLength24(handshake, len(clientHello))
+	if err != nil {
+		return nil, err
+	}
+
 	handshake = append(handshake, clientHello...)
 
 	packet = []byte{0x16}
 	packet = append(packet, recordVersion...)
-	packet = appendLength16(packet, len(handshake))
+
+	packet, err = appendLength16(packet, len(handshake))
+	if err != nil {
+		return nil, err
+	}
+
 	packet = append(packet, handshake...)
 
-	return packet
+	return packet, nil
 }
 
 // buildJARMExtensions assembles the extension block of a JARM ClientHello.
@@ -298,7 +332,7 @@ func buildJARMClientHello(host string, parameters *jarmProbeParameters) (packet 
 //
 // Returns:
 //   - extensions ([]byte): the length-prefixed extension block.
-func buildJARMExtensions(host string, parameters *jarmProbeParameters) (extensions []byte) {
+func buildJARMExtensions(host string, parameters *jarmProbeParameters) (extensions []byte, err error) {
 	var all []byte
 
 	if parameters.grease {
@@ -306,48 +340,52 @@ func buildJARMExtensions(host string, parameters *jarmProbeParameters) (extensio
 		all = appendUint16(all, 0)
 	}
 
-	// server_name
-	all = append(all, buildJARMServerName(host)...)
-
-	// extended_master_secret
-	all = append(all, []byte{0x00, 0x17, 0x00, 0x00}...)
-
-	// max_fragment_length
-	all = append(all, []byte{0x00, 0x01, 0x00, 0x01, 0x01}...)
-
-	// renegotiation_info
-	all = append(all, []byte{0xff, 0x01, 0x00, 0x01, 0x00}...)
-
-	// supported_groups
-	all = append(all, []byte{0x00, 0x0a, 0x00, 0x0a, 0x00, 0x08, 0x00, 0x1d, 0x00, 0x17, 0x00, 0x18, 0x00, 0x19}...)
-
-	// ec_point_formats
-	all = append(all, []byte{0x00, 0x0b, 0x00, 0x02, 0x01, 0x00}...)
-
-	// session_ticket
-	all = append(all, []byte{0x00, 0x23, 0x00, 0x00}...)
-
-	// application_layer_protocol_negotiation
-	all = append(all, buildJARMALPN(parameters)...)
-
-	// signature_algorithms
-	all = append(all, []byte{0x00, 0x0d, 0x00, 0x14, 0x00, 0x12, 0x04, 0x03, 0x08, 0x04, 0x04, 0x01, 0x05, 0x03, 0x08, 0x05, 0x05, 0x01, 0x08, 0x06, 0x06, 0x01, 0x02, 0x01}...)
-
-	// key_share
-	all = append(all, buildJARMKeyShare(parameters.grease)...)
-
-	// psk_key_exchange_modes
-	all = append(all, []byte{0x00, 0x2d, 0x00, 0x02, 0x01, 0x01}...)
-
-	// supported_versions
-	if parameters.version == "TLS_1.3" || parameters.supportedVersions == "1.2_SUPPORT" {
-		all = append(all, buildJARMSupportedVersions(parameters)...)
+	serverName, err := buildJARMServerName(host)
+	if err != nil {
+		return nil, err
 	}
 
-	extensions = appendLength16(nil, len(all))
+	all = append(all, serverName...)
+	all = append(all, []byte{0x00, 0x17, 0x00, 0x00}...)
+	all = append(all, []byte{0x00, 0x01, 0x00, 0x01, 0x01}...)
+	all = append(all, []byte{0xff, 0x01, 0x00, 0x01, 0x00}...)
+	all = append(all, []byte{0x00, 0x0a, 0x00, 0x0a, 0x00, 0x08, 0x00, 0x1d, 0x00, 0x17, 0x00, 0x18, 0x00, 0x19}...)
+	all = append(all, []byte{0x00, 0x0b, 0x00, 0x02, 0x01, 0x00}...)
+	all = append(all, []byte{0x00, 0x23, 0x00, 0x00}...)
+
+	alpn, err := buildJARMALPN(parameters)
+	if err != nil {
+		return nil, err
+	}
+
+	all = append(all, alpn...)
+	all = append(all, []byte{0x00, 0x0d, 0x00, 0x14, 0x00, 0x12, 0x04, 0x03, 0x08, 0x04, 0x04, 0x01, 0x05, 0x03, 0x08, 0x05, 0x05, 0x01, 0x08, 0x06, 0x06, 0x01, 0x02, 0x01}...)
+
+	keyShare, err := buildJARMKeyShare(parameters.grease)
+	if err != nil {
+		return nil, err
+	}
+
+	all = append(all, keyShare...)
+	all = append(all, []byte{0x00, 0x2d, 0x00, 0x02, 0x01, 0x01}...)
+
+	if parameters.version == "TLS_1.3" || parameters.supportedVersions == "1.2_SUPPORT" {
+		supportedVersions, err := buildJARMSupportedVersions(parameters)
+		if err != nil {
+			return nil, err
+		}
+
+		all = append(all, supportedVersions...)
+	}
+
+	extensions, err = appendLength16(nil, len(all))
+	if err != nil {
+		return nil, err
+	}
+
 	extensions = append(extensions, all...)
 
-	return extensions
+	return extensions, nil
 }
 
 // buildJARMServerName assembles the server_name (SNI) extension.
@@ -357,17 +395,31 @@ func buildJARMExtensions(host string, parameters *jarmProbeParameters) (extensio
 //
 // Returns:
 //   - extension ([]byte): the extension bytes.
-func buildJARMServerName(host string) (extension []byte) {
+func buildJARMServerName(host string) (extension []byte, err error) {
 	sni := []byte(host)
 
 	extension = appendUint16(extension, 0x0000)
-	extension = appendLength16(extension, len(sni)+5)
-	extension = appendLength16(extension, len(sni)+3)
+
+	extension, err = appendLength16(extension, len(sni)+5)
+	if err != nil {
+		return nil, err
+	}
+
+	extension, err = appendLength16(extension, len(sni)+3)
+	if err != nil {
+		return nil, err
+	}
+
 	extension = append(extension, 0x00)
-	extension = appendLength16(extension, len(sni))
+
+	extension, err = appendLength16(extension, len(sni))
+	if err != nil {
+		return nil, err
+	}
+
 	extension = append(extension, sni...)
 
-	return extension
+	return extension, nil
 }
 
 // buildJARMALPN assembles the ALPN extension.
@@ -377,7 +429,7 @@ func buildJARMServerName(host string) (extension []byte) {
 //
 // Returns:
 //   - extension ([]byte): the extension bytes.
-func buildJARMALPN(parameters *jarmProbeParameters) (extension []byte) {
+func buildJARMALPN(parameters *jarmProbeParameters) (extension []byte, err error) {
 	protocols := jarmALPNProtocols
 
 	if parameters.rareALPN {
@@ -391,16 +443,29 @@ func buildJARMALPN(parameters *jarmProbeParameters) (extension []byte) {
 	var all []byte
 
 	for _, protocol := range protocols {
-		all = appendLength8(all, len(protocol))
+		all, err = appendLength8(all, len(protocol))
+		if err != nil {
+			return nil, err
+		}
+
 		all = append(all, protocol...)
 	}
 
 	extension = appendUint16(nil, 0x0010)
-	extension = appendLength16(extension, len(all)+2)
-	extension = appendLength16(extension, len(all))
+
+	extension, err = appendLength16(extension, len(all)+2)
+	if err != nil {
+		return nil, err
+	}
+
+	extension, err = appendLength16(extension, len(all))
+	if err != nil {
+		return nil, err
+	}
+
 	extension = append(extension, all...)
 
-	return extension
+	return extension, nil
 }
 
 // buildJARMKeyShare assembles the key_share extension around the X25519
@@ -411,7 +476,7 @@ func buildJARMALPN(parameters *jarmProbeParameters) (extension []byte) {
 //
 // Returns:
 //   - extension ([]byte): the extension bytes.
-func buildJARMKeyShare(grease bool) (extension []byte) {
+func buildJARMKeyShare(grease bool) (extension []byte, err error) {
 	var share []byte
 
 	if grease {
@@ -422,14 +487,29 @@ func buildJARMKeyShare(grease bool) (extension []byte) {
 
 	share = appendUint16(share, 0x001d)
 	share = appendUint16(share, 0x0020)
-	share = append(share, randomBytes(rand.Reader, 32)...)
+
+	random, err := randomBytes(rand.Reader, 32)
+	if err != nil {
+		return nil, err
+	}
+
+	share = append(share, random...)
 
 	extension = appendUint16(nil, 0x0033)
-	extension = appendLength16(extension, len(share)+2)
-	extension = appendLength16(extension, len(share))
+
+	extension, err = appendLength16(extension, len(share)+2)
+	if err != nil {
+		return nil, err
+	}
+
+	extension, err = appendLength16(extension, len(share))
+	if err != nil {
+		return nil, err
+	}
+
 	extension = append(extension, share...)
 
-	return extension
+	return extension, nil
 }
 
 // buildJARMSupportedVersions assembles the supported_versions extension.
@@ -439,7 +519,7 @@ func buildJARMKeyShare(grease bool) (extension []byte) {
 //
 // Returns:
 //   - extension ([]byte): the extension bytes.
-func buildJARMSupportedVersions(parameters *jarmProbeParameters) (extension []byte) {
+func buildJARMSupportedVersions(parameters *jarmProbeParameters) (extension []byte, err error) {
 	versions := []uint16{0x0301, 0x0302, 0x0303}
 
 	if parameters.supportedVersions == "1.3_SUPPORT" {
@@ -461,11 +541,20 @@ func buildJARMSupportedVersions(parameters *jarmProbeParameters) (extension []by
 	}
 
 	extension = appendUint16(nil, 0x002b)
-	extension = appendLength16(extension, len(raw)+1)
-	extension = appendLength8(extension, len(raw))
+
+	extension, err = appendLength16(extension, len(raw)+1)
+	if err != nil {
+		return nil, err
+	}
+
+	extension, err = appendLength8(extension, len(raw))
+	if err != nil {
+		return nil, err
+	}
+
 	extension = append(extension, raw...)
 
-	return extension
+	return extension, nil
 }
 
 // jarmCipherList selects the cipher list for a probe.
@@ -745,8 +834,7 @@ func randomGrease(reader io.Reader) (grease uint16) {
 	return jarmGreaseValues[index.Int64()]
 }
 
-// randomBytes returns count cryptographically random bytes from reader. A
-// failure of the source is unrecoverable, so it panics.
+// randomBytes returns count cryptographically random bytes from reader.
 //
 // Parameters:
 //   - reader (io.Reader): the entropy source; production uses crypto/rand.Reader.
@@ -754,17 +842,18 @@ func randomGrease(reader io.Reader) (grease uint16) {
 //
 // Returns:
 //   - raw ([]byte): the random bytes.
-func randomBytes(reader io.Reader, count int) (raw []byte) {
+//   - err (error): non-nil when the entropy source fails.
+func randomBytes(reader io.Reader, count int) (raw []byte, err error) {
 	raw = make([]byte, count)
 
-	if _, err := io.ReadFull(reader, raw); err != nil {
-		panic(fmt.Sprintf("client.randomBytes: reading random bytes: %v", err))
+	if _, err = io.ReadFull(reader, raw); err != nil {
+		return nil, fmt.Errorf("client.randomBytes: reading random bytes: %w", err)
 	}
 
-	return raw
+	return raw, nil
 }
 
-// appendLength8 appends length as a single byte, panicking when it does
+// appendLength8 appends length as a single byte, reporting an overflow when it does
 // not fit. Every caller feeds lengths of buffers built in-memory a moment
 // earlier, so the bounds are always satisfiable.
 //
@@ -774,12 +863,13 @@ func randomBytes(reader io.Reader, count int) (raw []byte) {
 //
 // Returns:
 //   - extended ([]byte): the extended buffer.
-func appendLength8(raw []byte, length int) (extended []byte) {
+//   - err (error): non-nil when length is negative or overflows the encoding width.
+func appendLength8(raw []byte, length int) (extended []byte, err error) {
 	if length < 0 || length > 0xFF {
-		panic(fmt.Sprintf("client.appendLength8: length %d does not fit in one byte", length))
+		return nil, fmt.Errorf("client.appendLength8: length %d does not fit in one byte", length)
 	}
 
-	return append(raw, byte(length))
+	return append(raw, byte(length)), nil
 }
 
 // appendLength16 appends length as two big-endian bytes, panicking when it
@@ -791,16 +881,17 @@ func appendLength8(raw []byte, length int) (extended []byte) {
 //
 // Returns:
 //   - extended ([]byte): the extended buffer.
-func appendLength16(raw []byte, length int) (extended []byte) {
+//   - err (error): non-nil when length is negative or overflows the encoding width.
+func appendLength16(raw []byte, length int) (extended []byte, err error) {
 	if length < 0 || length > 0xFFFF {
-		panic(fmt.Sprintf("client.appendLength16: length %d does not fit in two bytes", length))
+		return nil, fmt.Errorf("client.appendLength16: length %d does not fit in two bytes", length)
 	}
 
-	return appendUint16(raw, uint16(length))
+	return appendUint16(raw, uint16(length)), nil
 }
 
-// appendLength24 appends length as three big-endian bytes, panicking when
-// it does not fit.
+// appendLength24 appends length as three big-endian bytes and reports values
+// that do not fit.
 //
 // Parameters:
 //   - raw ([]byte): the destination buffer.
@@ -808,12 +899,13 @@ func appendLength16(raw []byte, length int) (extended []byte) {
 //
 // Returns:
 //   - extended ([]byte): the extended buffer.
-func appendLength24(raw []byte, length int) (extended []byte) {
+//   - err (error): non-nil when length is negative or overflows the encoding width.
+func appendLength24(raw []byte, length int) (extended []byte, err error) {
 	if length < 0 || length > 0xFFFFFF {
-		panic(fmt.Sprintf("client.appendLength24: length %d does not fit in three bytes", length))
+		return nil, fmt.Errorf("client.appendLength24: length %d does not fit in three bytes", length)
 	}
 
-	return append(raw, byte(length>>16), byte(length>>8), byte(length)) //nolint:gosec // G115: guarded by the bounds check above.
+	return append(raw, byte(length>>16), byte(length>>8), byte(length)), nil //nolint:gosec // The range check bounds every converted byte to 0xff.
 }
 
 // appendUint16 appends value in big-endian order.

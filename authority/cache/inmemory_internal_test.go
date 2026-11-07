@@ -43,7 +43,7 @@ func TestInMemorySetGetRoundtrip(t *testing.T) {
 		CreatedAt:   time.Now(),
 	}
 
-	c.Set("example.com", entry)
+	setCertificate(t, c, "example.com", entry)
 
 	got, found := c.Get("example.com")
 	require.True(t, found)
@@ -56,32 +56,30 @@ func TestInMemoryGetMissOnUnknownHost(t *testing.T) {
 	c, err := NewInMemory(2)
 	require.NoError(t, err)
 
-	c.Set("example.com", &CertificateCacheEntry{CreatedAt: time.Now()})
+	setCertificate(t, c, "example.com", &CertificateCacheEntry{CreatedAt: time.Now()})
 
 	entry, found := c.Get("unknown.example.com")
 	assert.False(t, found)
 	assert.Nil(t, entry)
 }
 
-func TestInMemorySetNilEntryPanics(t *testing.T) {
+func TestInMemorySetRejectsNilEntry(t *testing.T) {
 	t.Parallel()
 
 	c, err := NewInMemory(1)
 	require.NoError(t, err)
 
-	require.PanicsWithValue(t, "cache.InMemory.Set: invalid input, entry is nil", func() {
-		c.Set("example.com", nil)
-	})
+	err = c.Set("example.com", nil)
+	require.EqualError(t, err, "cache.InMemory.Set: entry is nil")
 }
 
-func TestEvictionHeapPushRejectsWrongType(t *testing.T) {
+func TestEvictionHeapPushIgnoresWrongType(t *testing.T) {
 	t.Parallel()
 
 	var h evictionHeap
 
-	require.PanicsWithValue(t, "cache.evictionHeap.Push: invalid input, expected *heapEntry, got string", func() {
-		h.Push("not a heap entry")
-	})
+	h.Push("not a heap entry")
+	assert.Zero(t, h.Len())
 }
 
 func TestInMemoryEvictsOldestEntryWhenFull(t *testing.T) {
@@ -92,10 +90,10 @@ func TestInMemoryEvictsOldestEntryWhenFull(t *testing.T) {
 
 	now := time.Now()
 
-	c.Set("oldest.example.com", &CertificateCacheEntry{CreatedAt: now.Add(-3 * time.Hour)})
-	c.Set("newest.example.com", &CertificateCacheEntry{CreatedAt: now.Add(-time.Hour)})
+	setCertificate(t, c, "oldest.example.com", &CertificateCacheEntry{CreatedAt: now.Add(-3 * time.Hour)})
+	setCertificate(t, c, "newest.example.com", &CertificateCacheEntry{CreatedAt: now.Add(-time.Hour)})
 
-	c.Set("added.example.com", &CertificateCacheEntry{CreatedAt: now})
+	setCertificate(t, c, "added.example.com", &CertificateCacheEntry{CreatedAt: now})
 
 	_, found := c.Get("oldest.example.com")
 	assert.False(t, found)
@@ -127,15 +125,15 @@ func TestInMemorySetExistingHostOverwritesWithoutEviction(t *testing.T) {
 
 	now := time.Now()
 
-	c.Set("a.example.com", &CertificateCacheEntry{CreatedAt: now.Add(-3 * time.Hour)})
-	c.Set("b.example.com", &CertificateCacheEntry{CreatedAt: now.Add(-time.Hour)})
+	setCertificate(t, c, "a.example.com", &CertificateCacheEntry{CreatedAt: now.Add(-3 * time.Hour)})
+	setCertificate(t, c, "b.example.com", &CertificateCacheEntry{CreatedAt: now.Add(-time.Hour)})
 
 	replacement := &CertificateCacheEntry{
 		Certificate: &tls.Certificate{},
 		CreatedAt:   now,
 	}
 
-	c.Set("a.example.com", replacement)
+	setCertificate(t, c, "a.example.com", replacement)
 
 	got, found := c.Get("a.example.com")
 	require.True(t, found)
@@ -164,7 +162,7 @@ func TestInMemoryConcurrentGetSet(t *testing.T) {
 			for j := range 100 {
 				host := hosts[(i+j)%len(hosts)]
 
-				c.Set(host, &CertificateCacheEntry{CreatedAt: time.Now()})
+				setCertificate(t, c, host, &CertificateCacheEntry{CreatedAt: time.Now()})
 
 				_, _ = c.Get(host)
 			}
@@ -172,4 +170,9 @@ func TestInMemoryConcurrentGetSet(t *testing.T) {
 	}
 
 	wg.Wait()
+}
+
+func setCertificate(t *testing.T, c *InMemory, host string, entry *CertificateCacheEntry) {
+	t.Helper()
+	assert.NoError(t, c.Set(host, entry))
 }

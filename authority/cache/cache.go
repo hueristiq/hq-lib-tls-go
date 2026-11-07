@@ -47,5 +47,8 @@ type CertificateCache interface {
 	// Parameters:
 	//   - host (string): the normalized hostname to store the entry under.
 	//   - entry (*CertificateCacheEntry): the entry to store; must not be nil.
-	Set(host string, entry *CertificateCacheEntry)
+	//
+	// Returns:
+	//   - err (error): non-nil when entry is nil or storage fails.
+	Set(host string, entry *CertificateCacheEntry) (err error)
 }

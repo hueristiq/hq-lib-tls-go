@@ -23,7 +23,7 @@ func BenchmarkInMemorySetEvict(b *testing.B) {
 	}
 
 	for i := range maxSize {
-		cache.Set(strconv.Itoa(i)+".example.com", entry)
+		require.NoError(b, cache.Set(strconv.Itoa(i)+".example.com", entry))
 	}
 
 	b.ReportAllocs()
@@ -31,7 +31,7 @@ func BenchmarkInMemorySetEvict(b *testing.B) {
 	i := maxSize
 
 	for b.Loop() {
-		cache.Set(strconv.Itoa(i)+".example.com", entry)
+		require.NoError(b, cache.Set(strconv.Itoa(i)+".example.com", entry))
 		i++
 	}
 }

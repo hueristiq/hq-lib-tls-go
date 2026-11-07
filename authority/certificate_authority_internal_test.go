@@ -90,13 +90,15 @@ func (c *recordingCertificateCache) Get(host string) (entry *hqgotlscache.Certif
 	return entry, found
 }
 
-func (c *recordingCertificateCache) Set(host string, entry *hqgotlscache.CertificateCacheEntry) {
+func (c *recordingCertificateCache) Set(host string, entry *hqgotlscache.CertificateCacheEntry) (err error) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
 	c.sets++
 
 	c.entries[host] = entry
+
+	return nil
 }
 
 func newTestCSR(t *testing.T, commonName string, dnsNames []string) (csr *x509.CertificateRequest) {
@@ -642,10 +644,10 @@ func TestGetTLSCertificateRegeneratesAfterExpiry(t *testing.T) {
 	entry, found := certificateCache.Get("example.com")
 	require.True(t, found)
 
-	certificateCache.Set("example.com", &hqgotlscache.CertificateCacheEntry{
+	require.NoError(t, certificateCache.Set("example.com", &hqgotlscache.CertificateCacheEntry{
 		Certificate: entry.Certificate,
 		CreatedAt:   time.Now().Add(-2 * time.Minute),
-	})
+	}))
 
 	second, err := ca.TLSCertificate("example.com")
 	require.NoError(t, err)
@@ -2380,7 +2382,9 @@ func (c *secondLookupCache) Get(string) (entry *hqgotlscache.CertificateCacheEnt
 	return c.entry, true
 }
 
-func (c *secondLookupCache) Set(string, *hqgotlscache.CertificateCacheEntry) {}
+func (c *secondLookupCache) Set(string, *hqgotlscache.CertificateCacheEntry) (err error) {
+	return nil
+}
 
 func TestGetTLSCertificateSecondCacheLookup(t *testing.T) {
 	t.Parallel()

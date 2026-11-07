@@ -18,7 +18,9 @@ import (
 // syntheticServerHello builds a TLS record containing a ServerHello with
 // the given cipher and extension pairs, mirroring what a server would send
 // as its first flight.
-func syntheticServerHello(cipher uint16, extensions [][]byte) []byte {
+func syntheticServerHello(t *testing.T, cipher uint16, extensions [][]byte) []byte {
+	t.Helper()
+
 	body := make([]byte, 0, 64)
 	body = appendUint16(body, 0x0303)
 	body = append(append(body, make([]byte, 32)...), 0x00) // random + empty session ID
@@ -31,26 +33,41 @@ func syntheticServerHello(cipher uint16, extensions [][]byte) []byte {
 		extBlock = append(extBlock, extension...)
 	}
 
-	body = appendLength16(body, len(extBlock))
+	var err error
+
+	body, err = appendLength16(body, len(extBlock))
+	require.NoError(t, err)
+
 	body = append(body, extBlock...)
 
 	handshake := make([]byte, 0, 4+len(body))
 	handshake = append(handshake, 0x02)
-	handshake = appendLength24(handshake, len(body))
+	handshake, err = appendLength24(handshake, len(body))
+	require.NoError(t, err)
+
 	handshake = append(handshake, body...)
 
 	record := make([]byte, 0, 5+len(handshake))
 	record = append(record, 0x16, 0x03, 0x03)
-	record = appendLength16(record, len(handshake))
+	record, err = appendLength16(record, len(handshake))
+	require.NoError(t, err)
+
 	record = append(record, handshake...)
 
 	return record
 }
 
-func extensionBytes(extensionType uint16, data []byte) []byte {
+func extensionBytes(t *testing.T, extensionType uint16, data []byte) []byte {
+	t.Helper()
+
 	extension := make([]byte, 0, 4+len(data))
 	extension = appendUint16(extension, extensionType)
-	extension = appendLength16(extension, len(data))
+
+	var err error
+
+	extension, err = appendLength16(extension, len(data))
+	require.NoError(t, err)
+
 	extension = append(extension, data...)
 
 	return extension
@@ -59,9 +76,9 @@ func extensionBytes(extensionType uint16, data []byte) []byte {
 func TestParseJARMServerHello(t *testing.T) {
 	t.Parallel()
 
-	record := syntheticServerHello(0x1301, [][]byte{
-		extensionBytes(0x002b, []byte{0x00, 0x02, 0x03, 0x04}),                              // supported_versions
-		extensionBytes(0x0033, append([]byte{0x00, 0x1d, 0x00, 0x20}, make([]byte, 32)...)), // key_share
+	record := syntheticServerHello(t, 0x1301, [][]byte{
+		extensionBytes(t, 0x002b, []byte{0x00, 0x02, 0x03, 0x04}),                              // supported_versions
+		extensionBytes(t, 0x0033, append([]byte{0x00, 0x1d, 0x00, 0x20}, make([]byte, 32)...)), // key_share
 	})
 
 	hello := parseJARMServerHello(record)
@@ -76,8 +93,8 @@ func TestParseJARMServerHelloALPN(t *testing.T) {
 	t.Parallel()
 
 	// ALPN extension value: list length (2) + protocol length (1) + name.
-	record := syntheticServerHello(0x1301, [][]byte{
-		extensionBytes(0x0010, []byte{0x00, 0x04, 0x03, 'f', 'o', 'o'}),
+	record := syntheticServerHello(t, 0x1301, [][]byte{
+		extensionBytes(t, 0x0010, []byte{0x00, 0x04, 0x03, 'f', 'o', 'o'}),
 	})
 
 	// A real server flight carries bytes beyond the ServerHello (the
@@ -166,7 +183,8 @@ func TestBuildJARMClientHello(t *testing.T) {
 
 	parameters := jarmProbes[0]
 
-	packet := buildJARMClientHello("example.com", &parameters)
+	packet, err := buildJARMClientHello("example.com", &parameters)
+	require.NoError(t, err)
 
 	require.NotEmpty(t, packet)
 	assert.Equal(t, byte(0x16), packet[0], "the first byte is the handshake record type")
@@ -182,7 +200,8 @@ func TestJARMProbeParametersRoundTrip(t *testing.T) {
 	t.Parallel()
 
 	for _, parameters := range jarmProbes {
-		packet := buildJARMClientHello("example.com", &parameters)
+		packet, err := buildJARMClientHello("example.com", &parameters)
+		require.NoError(t, err)
 
 		assert.NotEmpty(t, packet, "every probe combination builds a packet")
 		assert.Len(t, jarmProbes, 10, "the probe count is part of the specification")
@@ -257,7 +276,7 @@ func TestSendJARMProbeFailurePaths(t *testing.T) {
 			conn: &fakeConn{readErr: errors.New("read failed")},
 		},
 		"context ended": {
-			conn: &fakeConn{readData: syntheticServerHello(0x1301, nil)},
+			conn: &fakeConn{readData: syntheticServerHello(t, 0x1301, nil)},
 			ctx: func(ctx context.Context) context.Context {
 				canceled, cancel := context.WithCancel(ctx)
 				cancel()
@@ -398,20 +417,24 @@ func TestRandomGreaseFailure(t *testing.T) {
 	assert.Equal(t, uint16(0x0a0a), randomGrease(failingReader{}))
 }
 
-func TestRandomBytesPanicsOnEntropyFailure(t *testing.T) {
+func TestRandomBytesReturnsEntropyFailure(t *testing.T) {
 	t.Parallel()
 
-	require.Panics(t, func() {
-		randomBytes(failingReader{}, 16)
-	})
+	_, err := randomBytes(failingReader{}, 16)
+	require.Error(t, err)
 }
 
-func TestAppendLengthPanics(t *testing.T) {
+func TestAppendLengthRejectsOverflow(t *testing.T) {
 	t.Parallel()
 
-	require.Panics(t, func() { appendLength8(nil, 0x100) })
-	require.Panics(t, func() { appendLength16(nil, 0x10000) })
-	require.Panics(t, func() { appendLength24(nil, 0x1000000) })
+	_, err := appendLength8(nil, 0x100)
+	require.Error(t, err)
+
+	_, err = appendLength16(nil, 0x10000)
+	require.Error(t, err)
+
+	_, err = appendLength24(nil, 0x1000000)
+	require.Error(t, err)
 }
 
 func TestJARM(t *testing.T) {

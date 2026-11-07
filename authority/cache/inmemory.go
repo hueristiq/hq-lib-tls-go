@@ -2,6 +2,7 @@ package cache
 
 import (
 	"container/heap"
+	"errors"
 	"fmt"
 	"sync"
 )
@@ -79,8 +80,6 @@ func (c *InMemory) Get(host string) (entry *CertificateCacheEntry, found bool) {
 
 // Set stores an entry for the given host, replacing any existing entry.
 //
-// Set panics if entry is nil.
-//
 // When the cache is full and the host is new, the entry with the earliest
 // CreatedAt is evicted first. Storing an existing host never triggers eviction.
 // Eviction pops the root of the byAge min-heap, so a full-cache Set is O(log n);
@@ -89,9 +88,12 @@ func (c *InMemory) Get(host string) (entry *CertificateCacheEntry, found bool) {
 // Parameters:
 //   - host (string): the normalized hostname to store the entry under.
 //   - entry (*CertificateCacheEntry): the entry to store.
-func (c *InMemory) Set(host string, entry *CertificateCacheEntry) {
+//
+// Returns:
+//   - err (error): non-nil when entry is nil.
+func (c *InMemory) Set(host string, entry *CertificateCacheEntry) (err error) {
 	if entry == nil {
-		panic("cache.InMemory.Set: invalid input, entry is nil")
+		return errors.New("cache.InMemory.Set: entry is nil")
 	}
 
 	c.mutex.Lock()
@@ -104,7 +106,7 @@ func (c *InMemory) Set(host string, entry *CertificateCacheEntry) {
 
 		heap.Fix(&c.byAge, existing.index)
 
-		return
+		return nil
 	}
 
 	if len(c.entries) >= c.maxSize {
@@ -115,6 +117,8 @@ func (c *InMemory) Set(host string, entry *CertificateCacheEntry) {
 	c.entries[host] = stored
 
 	heap.Push(&c.byAge, stored)
+
+	return nil
 }
 
 // evictOldest removes the entry with the earliest CreatedAt from the cache.
@@ -180,16 +184,15 @@ func (h evictionHeap) Swap(i, j int) {
 	h[j].index = j
 }
 
-// Push appends an entry to the heap.
-//
-// It panics if item is not a *heapEntry.
+// Push appends an entry to the heap. Unsupported values are ignored; Set uses
+// concrete heapEntry values.
 //
 // Parameters:
 //   - item (any): the *heapEntry to append; the heap only ever holds *heapEntry values.
 func (h *evictionHeap) Push(item any) {
 	stored, ok := item.(*heapEntry)
 	if !ok {
-		panic(fmt.Sprintf("cache.evictionHeap.Push: invalid input, expected *heapEntry, got %T", item))
+		return
 	}
 
 	stored.index = len(*h)

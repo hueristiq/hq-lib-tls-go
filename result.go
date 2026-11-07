@@ -16,8 +16,6 @@ package tls
 //   - ALPN (string): the negotiated application protocol, if any.
 //   - Certificates ([][]byte): the DER-encoded certificate chain, leaf
 //     first; empty when the server offered none.
-//   - Error (error): the handshake failure, if the server was reached but
-//     the handshake did not complete.
 type Result struct {
 	Host         string
 	IP           string
@@ -26,5 +24,4 @@ type Result struct {
 	CipherSuite  uint16
 	ALPN         string
 	Certificates [][]byte
-	Error        error
 }

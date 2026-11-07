@@ -1,7 +1,6 @@
 package tls
 
 import (
-	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -18,7 +17,6 @@ func TestResultFields(t *testing.T) {
 		CipherSuite:  0x1301,
 		ALPN:         "h2",
 		Certificates: [][]byte{{0x01}},
-		Error:        errors.New("handshake failed"),
 	}
 
 	assert.Equal(t, "example.com", result.Host)
@@ -28,5 +26,4 @@ func TestResultFields(t *testing.T) {
 	assert.Equal(t, uint16(0x1301), result.CipherSuite)
 	assert.Equal(t, "h2", result.ALPN)
 	assert.Equal(t, [][]byte{{0x01}}, result.Certificates)
-	assert.EqualError(t, result.Error, "handshake failed")
 }

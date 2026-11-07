@@ -27,7 +27,6 @@ func TestInspectCTLS(t *testing.T) {
 	result, err := client.Inspect(context.Background(), address)
 
 	require.NoError(t, err)
-	assert.NoError(t, result.Error)
 	assert.Equal(t, ModeCTLS, result.Mode)
 	assert.Equal(t, uint16(tls.VersionTLS12), result.TLSVersion)
 	assert.NotZero(t, result.CipherSuite)
@@ -71,7 +70,8 @@ func TestInspectCTLSHandshakeFailure(t *testing.T) {
 	client := newTestClient(t, &fakeDialer{conn: &fakeConn{readErr: io.EOF}}, WithMode(ModeCTLS))
 
 	result, err := client.Inspect(context.Background(), "example.com:443")
-	require.NoError(t, err)
-	require.Error(t, result.Error)
-	assert.Contains(t, result.Error.Error(), "handshake failed")
+	require.ErrorContains(t, err, "handshake failed")
+	assert.Equal(t, "example.com", result.Host)
+	assert.Equal(t, ModeCTLS, result.Mode)
+	assert.NotEmpty(t, result.IP)
 }

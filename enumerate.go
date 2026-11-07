@@ -41,7 +41,7 @@ func (p *Client) EnumerateVersions(ctx context.Context, host string) (versions [
 		})
 
 		result, probeErr := prober.Inspect(ctx, host)
-		if probeErr != nil || result.Error != nil || result.TLSVersion != version {
+		if probeErr != nil || result.TLSVersion != version {
 			continue
 		}
 
@@ -103,7 +103,7 @@ func (p *Client) EnumerateCipherSuites(ctx context.Context, host string, concurr
 				})
 
 				result, probeErr := prober.Inspect(ctx, host)
-				if probeErr != nil || result.Error != nil || result.CipherSuite != suite {
+				if probeErr != nil || result.CipherSuite != suite {
 					continue
 				}
 

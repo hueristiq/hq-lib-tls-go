@@ -86,7 +86,7 @@ func TestInspectFailsToDial(t *testing.T) {
 	result, err := client.Inspect(context.Background(), "127.0.0.1:1")
 
 	require.Error(t, err)
-	assert.Empty(t, result.Host)
+	assert.Equal(t, "127.0.0.1", result.Host)
 }
 
 type fakeAddr string

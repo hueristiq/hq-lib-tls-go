@@ -16,8 +16,8 @@ import (
 //   - address (string): the dial address (host:port).
 //
 // Returns:
-//   - result (Result): the inspection outcome; [Result.Error] carries handshake failures.
-//   - err (error): non-nil when the connection itself could not be established.
+//   - result (Result): the inspection outcome, including a peer address after a failed handshake.
+//   - err (error): non-nil when the connection or handshake fails.
 func (p *Client) inspectWithCTLS(ctx context.Context, host, address string) (result Result, err error) {
 	result.Mode = ModeCTLS
 
@@ -62,9 +62,9 @@ func (p *Client) inspectWithCTLS(ctx context.Context, host, address string) (res
 	}
 
 	if err = tlsConn.HandshakeContext(ctx); err != nil {
-		result.Error = fmt.Errorf("handshake failed: %w", err)
+		err = fmt.Errorf("handshake failed: %w", err)
 
-		return result, nil
+		return result, err
 	}
 
 	state := tlsConn.ConnectionState()

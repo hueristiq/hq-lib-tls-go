@@ -169,6 +169,7 @@ func generateSection() (section []byte) {
 	write("// Regenerate from the repository root with:")
 	write("//")
 	write("//\tgo generate ./...")
+	write("//")
 	write("// cipherClassification maps cipher suite IDs to their security")
 	write("// classification.")
 	write("var cipherClassification = map[uint16]CipherSecurity{")
@@ -177,7 +178,7 @@ func generateSection() (section []byte) {
 		_, _ = fmt.Fprintf(&buffer, "\t%#04x: %s,\n", item.id, securityNames[item.rank])
 	}
 
-	write("}")
+	write("}\n")
 
 	return buffer.Bytes()
 }

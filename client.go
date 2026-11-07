@@ -80,18 +80,17 @@ func New(ofs ...OptionFunc) (client *Client, err error) {
 // certificates according to the configured mode.
 //
 // The host may be given with or without a port; without one, 443 is used.
-// Dialing failures (unreachable host, connection refused, exhausted
-// context) are returned as err; a reached server whose handshake fails
-// yields a result carrying [Result.Error] instead, so callers can still
-// report inspection status.
+// Dialing and handshake failures are returned as err. A reached server
+// yields a partial result containing its mode and peer address alongside
+// the error; callers must check err before using negotiated parameters.
 //
 // Parameters:
 //   - ctx (context.Context): the context bounding the whole operation.
 //   - host (string): the target, as hostname, IP, "host:port", or "IP:port".
 //
 // Returns:
-//   - result (Result): the inspection outcome; valid even when the handshake failed.
-//   - err (error): non-nil only when no connection could be established.
+//   - result (Result): the inspection outcome, including partial connection metadata on failure.
+//   - err (error): non-nil when inspection fails.
 func (p *Client) Inspect(ctx context.Context, host string) (result Result, err error) {
 	host, port, err := splitHostPort(host)
 	if err != nil {
@@ -112,13 +111,13 @@ func (p *Client) Inspect(ctx context.Context, host string) (result Result, err e
 		result, err = p.inspectWithCTLS(ctx, host, address)
 	}
 
+	result.Host = host
+
 	if err != nil {
 		err = fmt.Errorf("client.Inspect: inspecting %s: %w", host, err)
 
-		return Result{}, err
+		return result, err
 	}
-
-	result.Host = host
 
 	return result, nil
 }

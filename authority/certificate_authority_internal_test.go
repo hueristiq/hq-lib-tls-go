@@ -1796,38 +1796,6 @@ func TestTLSCertificateServesFromCustomCache(t *testing.T) {
 	assert.Equal(t, 1, certificateCache.sets)
 }
 
-func BenchmarkGetCertificateCacheHit(b *testing.B) {
-	caCertificate, caPrivateKey, err := GenerateCACertificatePrivateKey(
-		WithCACommonName("Benchmark CA"),
-		WithCAKeyType(KeyTypeECDSAP256),
-	)
-	require.NoError(b, err)
-
-	certificateCache, err := hqgotlscache.NewInMemory(8)
-	require.NoError(b, err)
-
-	ca, err := New(caCertificate, caPrivateKey, WithCache(certificateCache))
-	require.NoError(b, err)
-
-	config := ca.NewTLSConfig()
-
-	hello := &tls.ClientHelloInfo{ServerName: "example.com"}
-
-	// Populate the cache so every GetCertificate below is a cache hit.
-	_, err = config.GetCertificate(hello)
-	require.NoError(b, err)
-
-	b.ReportAllocs()
-
-	var certificate *tls.Certificate
-
-	for b.Loop() {
-		certificate, _ = config.GetCertificate(hello)
-	}
-
-	_ = certificate
-}
-
 func TestGetTLSCertificateLeaderPanicUnblocksWaiters(t *testing.T) {
 	t.Parallel()
 

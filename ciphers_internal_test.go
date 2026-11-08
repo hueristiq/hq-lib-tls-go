@@ -24,8 +24,6 @@ func TestCipherClassification(t *testing.T) {
 	assert.Contains(t, secure, uint16(0x1301))
 }
 
-// TestCiphersTableSmoke anchors the generated table that used to live in
-// ciphers_table.go; TestCipherClassification exercises its contents.
 func TestCiphersTableSmoke(t *testing.T) {
 	t.Parallel()
 }

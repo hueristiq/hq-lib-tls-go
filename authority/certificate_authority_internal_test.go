@@ -2365,8 +2365,6 @@ func TestWithAllowedHostsRequiresWrappedHandler(t *testing.T) {
 	require.ErrorContains(t, err, "has no GetCertificate to wrap")
 }
 
-// secondLookupCache misses the first Get and hits the second, exercising the
-// cache re-check performed under the in-flight mutex.
 type secondLookupCache struct {
 	entry *hqgotlscache.CertificateCacheEntry
 	gets  int

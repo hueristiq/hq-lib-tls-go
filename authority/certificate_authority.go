@@ -1257,7 +1257,7 @@ type OptionFunc func(opts *Options)
 //
 // Returns:
 //   - of (OptionFunc): an OptionFunc that updates the CacheMaxAge field of the options.
-func WithCacheMaxAge(maxAge time.Duration) OptionFunc {
+func WithCacheMaxAge(maxAge time.Duration) (of OptionFunc) {
 	return func(opts *Options) {
 		opts.CacheMaxAge = maxAge
 	}
@@ -1275,7 +1275,7 @@ func WithCacheMaxAge(maxAge time.Duration) OptionFunc {
 //
 // Returns:
 //   - of (OptionFunc): an OptionFunc that updates the Cache field of the options.
-func WithCache(c hqgotlscache.CertificateCache) OptionFunc {
+func WithCache(c hqgotlscache.CertificateCache) (of OptionFunc) {
 	return func(opts *Options) {
 		opts.Cache = c
 	}
@@ -2001,6 +2001,24 @@ func isLowercaseASCII(s string) (isLower bool) {
 // paths that the underlying standard library call cannot produce on demand.
 //
 // A nil [CertificateAuthority.ops] means the default operations.
+//
+// Fields:
+//   - rsaGenerateKey: RSA key generation ([rsa.GenerateKey]).
+//   - ecdsaGenerateKey: ECDSA key generation ([ecdsa.GenerateKey]).
+//   - ed25519GenerateKey: Ed25519 key generation ([ed25519.GenerateKey]).
+//   - randomInt: cryptographic random integer ([crypto/rand.Int]).
+//   - marshalPKIXPublicKey: PKIX public key marshaling
+//     ([x509.MarshalPKIXPublicKey]).
+//   - marshalPKCS8Key: PKCS#8 private key marshaling
+//     ([x509.MarshalPKCS8PrivateKey]).
+//   - createCertificate: certificate creation ([x509.CreateCertificate]).
+//   - parseCertificate: certificate parsing ([x509.ParseCertificate]).
+//   - loadKeyPair: PEM key-pair loading ([tls.LoadX509KeyPair]).
+//   - lstat: symlink-safe file inspection ([os.Lstat]).
+//   - chmodBeforeWrite: permission change before writing ([os.Chmod]).
+//   - chmodAfterWrite: permission change after writing ([os.Chmod]).
+//   - certificateToPEM: certificate PEM encoding ([CertificateToPEM]).
+//   - privateKeyToPEM: private key PEM encoding ([PrivateKeyToPEM]).
 type operations struct {
 	rsaGenerateKey       func(io.Reader, int) (*rsa.PrivateKey, error)
 	ecdsaGenerateKey     func(elliptic.Curve, io.Reader) (*ecdsa.PrivateKey, error)

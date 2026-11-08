@@ -7,8 +7,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// appendLength24 appends a 24-bit length with explicit bounds, mirroring
-// the production encoders.
 func appendLength24(raw []byte, length int) []byte {
 	if length < 0 || length > 0xFFFFFF {
 		panic("fingerprint test: length does not fit in three bytes")
@@ -19,7 +17,6 @@ func appendLength24(raw []byte, length int) []byte {
 	return raw
 }
 
-// appendLength16 appends a 16-bit length with explicit bounds.
 func appendLength16(raw []byte, length int) []byte {
 	if length < 0 || length > 0xFFFF {
 		panic("fingerprint test: length does not fit in two bytes")
@@ -30,14 +27,12 @@ func appendLength16(raw []byte, length int) []byte {
 	return raw
 }
 
-// appendUint16 appends a uint16 in big-endian order.
 func appendUint16(raw []byte, value uint16) []byte {
 	raw = append(raw, byte(value>>8), byte(value&0xFF))
 
 	return raw
 }
 
-// clientHelloMessage builds a ClientHello handshake message.
 func clientHelloMessage(body []byte) []byte {
 	raw := make([]byte, 0, 4+len(body))
 	raw = append(raw, 0x01)
@@ -47,7 +42,6 @@ func clientHelloMessage(body []byte) []byte {
 	return raw
 }
 
-// serverHelloMessage builds a ServerHello handshake message.
 func serverHelloMessage(body []byte) []byte {
 	raw := make([]byte, 0, 4+len(body))
 	raw = append(raw, 0x02)
@@ -66,8 +60,6 @@ func extension(extensionType uint16, data []byte) []byte {
 	return raw
 }
 
-// buildBody concatenates parts into a single buffer with copy, keeping
-// the synthetic fixtures free of append chains.
 func buildBody(parts ...[]byte) []byte {
 	total := 0
 

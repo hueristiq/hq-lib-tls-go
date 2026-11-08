@@ -36,11 +36,21 @@ const (
 
 // apiResponse is the shape of the ciphersuite.info response: a list of
 // single-entry objects keyed by suite name.
+//
+// Fields:
+//   - Ciphersuites ([]map[string]cipherSuite): the dataset entries, each a
+//     single-entry map from suite name to suite.
 type apiResponse struct {
 	Ciphersuites []map[string]cipherSuite `json:"ciphersuites"`
 }
 
 // cipherSuite is one entry of the dataset.
+//
+// Fields:
+//   - HexByte1 (string): the high byte of the suite ID, "0xNN".
+//   - HexByte2 (string): the low byte of the suite ID, "0xNN".
+//   - Security (string): the dataset's security label ("insecure", "weak",
+//     "secure", or "recommended").
 type cipherSuite struct {
 	HexByte1 string `json:"hex_byte_1"`
 	HexByte2 string `json:"hex_byte_2"`
@@ -104,6 +114,9 @@ func main() {
 
 // generateSection fetches the dataset and renders the generated comment and
 // cipher-classification map.
+//
+// Returns:
+//   - section ([]byte): the generated file section, marker comments excluded.
 func generateSection() (section []byte) {
 	client := &http.Client{
 		Timeout: 30 * time.Second,
@@ -184,7 +197,15 @@ func generateSection() (section []byte) {
 }
 
 // replaceSection replaces the text between the generated-section markers in
-// path with section, preserving the rest of the file.
+// path with section, preserving the rest of the file. The file is replaced
+// atomically through a temporary sibling.
+//
+// Parameters:
+//   - path (string): the target Go file.
+//   - section ([]byte): the new generated content.
+//
+// Returns:
+//   - err (error): non-nil when a marker is missing or the write fails.
 func replaceSection(path string, section []byte) (err error) {
 	data, err := os.ReadFile(path) //nolint:gosec // the output path is supplied explicitly by the maintainer.
 	if err != nil {

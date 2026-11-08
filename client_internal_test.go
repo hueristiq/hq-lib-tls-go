@@ -163,16 +163,6 @@ func TestInspectInvalidHost(t *testing.T) {
 	require.ErrorContains(t, err, "host is empty")
 }
 
-// startTLSServer starts a local TLS 1.2 server on 127.0.0.1 and returns
-// its address. The server presents a certificate minted for "localhost" by
-// an ephemeral CA generated per test.
-//
-// Parameters:
-//   - tb (testing.TB): the test handle.
-//
-// Returns:
-//   - address (string): the server's host:port address.
-//   - stop (func()): stops the server and closes the listener.
 func startTLSServer(tb testing.TB) (address string, stop func()) {
 	tb.Helper()
 

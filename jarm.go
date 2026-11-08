@@ -872,8 +872,8 @@ func appendLength8(raw []byte, length int) (extended []byte, err error) {
 	return append(raw, byte(length)), nil
 }
 
-// appendLength16 appends length as two big-endian bytes, panicking when it
-// does not fit.
+// appendLength16 appends length as two big-endian bytes, reporting an
+// overflow when it does not fit.
 //
 // Parameters:
 //   - raw ([]byte): the destination buffer.

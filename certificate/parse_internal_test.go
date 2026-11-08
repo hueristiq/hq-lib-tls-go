@@ -12,7 +12,6 @@ import (
 	hqgotlsauthority "github.com/hueristiq/hq-lib-tls-go/authority"
 )
 
-// testCA mints a CA and an authority-issued leaf for the given hosts.
 func testCA(tb testing.TB, hosts []string) (caCertificate *x509.Certificate, caPrivateKey crypto.Signer, leafCertificate *x509.Certificate) {
 	tb.Helper()
 

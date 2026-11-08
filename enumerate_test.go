@@ -11,7 +11,6 @@ import (
 	hqgotls "github.com/hueristiq/hq-lib-tls-go"
 )
 
-// newLocalTLS starts a TLS test server and returns its host:port.
 func newLocalTLS(t *testing.T) string {
 	t.Helper()
 

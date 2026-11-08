@@ -19,8 +19,6 @@ import (
 	"golang.org/x/crypto/ocsp"
 )
 
-// mintLeaf issues a leaf whose AIA extension carries the given OCSP and
-// CRL URLs.
 func mintLeaf(tb testing.TB, caCertificate *x509.Certificate, caPrivateKey crypto.Signer, ocspServers, crlURLs []string) *x509.Certificate {
 	tb.Helper()
 

@@ -15,9 +15,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// syntheticServerHello builds a TLS record containing a ServerHello with
-// the given cipher and extension pairs, mirroring what a server would send
-// as its first flight.
 func syntheticServerHello(t *testing.T, cipher uint16, extensions [][]byte) []byte {
 	t.Helper()
 

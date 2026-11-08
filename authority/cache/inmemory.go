@@ -213,5 +213,3 @@ func (h *evictionHeap) Pop() (item any) {
 
 	return stored
 }
-
-var _ CertificateCache = (*InMemory)(nil)

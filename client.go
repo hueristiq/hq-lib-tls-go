@@ -214,8 +214,8 @@ type OptionFunc func(opts *Options)
 //   - mode (Mode): the connection mode to use ([ModeCTLS] or [ModeOpenSSL]).
 //
 // Returns:
-//   - of (Option): an OptionFunc that updates the Mode field of the options.
-func WithMode(mode Mode) OptionFunc {
+//   - fn (OptionFunc): a functional option that sets the Mode field in the options.
+func WithMode(mode Mode) (fn OptionFunc) {
 	return func(opts *Options) {
 		opts.Mode = mode
 	}
@@ -231,8 +231,8 @@ func WithMode(mode Mode) OptionFunc {
 //   - timeout (time.Duration): the connection timeout (e.g., 5*time.Second).
 //
 // Returns:
-//   - of (Option): an OptionFunc that updates the Timeout field of the options.
-func WithTimeout(timeout time.Duration) OptionFunc {
+//   - fn (OptionFunc): a functional option that sets the Timeout field in the options.
+func WithTimeout(timeout time.Duration) (fn OptionFunc) {
 	return func(opts *Options) {
 		opts.Timeout = timeout
 	}
@@ -248,8 +248,8 @@ func WithTimeout(timeout time.Duration) OptionFunc {
 //   - serverName (string): the SNI name to send (e.g., "example.com").
 //
 // Returns:
-//   - of (Option): an OptionFunc that updates the ServerName field of the options.
-func WithServerName(serverName string) OptionFunc {
+//   - fn (OptionFunc): a functional option that sets the ServerName field in the options.
+func WithServerName(serverName string) (fn OptionFunc) {
 	return func(opts *Options) {
 		opts.ServerName = serverName
 	}
@@ -265,8 +265,8 @@ func WithServerName(serverName string) OptionFunc {
 //   - cipherSuites ([]uint16): the cipher suite IDs to offer.
 //
 // Returns:
-//   - of (Option): an OptionFunc that updates the CipherSuites field of the options.
-func WithCipherSuites(cipherSuites []uint16) OptionFunc {
+//   - fn (OptionFunc): a functional option that sets the CipherSuites field in the options.
+func WithCipherSuites(cipherSuites []uint16) (fn OptionFunc) {
 	return func(opts *Options) {
 		opts.CipherSuites = cipherSuites
 	}
@@ -280,8 +280,8 @@ func WithCipherSuites(cipherSuites []uint16) OptionFunc {
 //   - minVersion (uint16): the minimum version (e.g., [tls.VersionTLS12]).
 //
 // Returns:
-//   - of (Option): an OptionFunc that updates the MinVersion field of the options.
-func WithMinVersion(minVersion uint16) OptionFunc {
+//   - fn (OptionFunc): a functional option that sets the MinVersion field in the options.
+func WithMinVersion(minVersion uint16) (fn OptionFunc) {
 	return func(opts *Options) {
 		opts.MinVersion = minVersion
 	}
@@ -295,8 +295,8 @@ func WithMinVersion(minVersion uint16) OptionFunc {
 //   - maxVersion (uint16): the maximum version (e.g., [tls.VersionTLS13]).
 //
 // Returns:
-//   - of (Option): an OptionFunc that updates the MaxVersion field of the options.
-func WithMaxVersion(maxVersion uint16) OptionFunc {
+//   - fn (OptionFunc): a functional option that sets the MaxVersion field in the options.
+func WithMaxVersion(maxVersion uint16) (fn OptionFunc) {
 	return func(opts *Options) {
 		opts.MaxVersion = maxVersion
 	}
@@ -310,8 +310,8 @@ func WithMaxVersion(maxVersion uint16) OptionFunc {
 //   - nextProtos (...string): the ALPN protocol identifiers, in preference order.
 //
 // Returns:
-//   - of (Option): an OptionFunc that updates the NextProtos field of the options.
-func WithNextProtos(nextProtos ...string) OptionFunc {
+//   - fn (OptionFunc): a functional option that sets the NextProtos field in the options.
+func WithNextProtos(nextProtos ...string) (fn OptionFunc) {
 	return func(opts *Options) {
 		opts.NextProtos = nextProtos
 	}
@@ -325,8 +325,8 @@ func WithNextProtos(nextProtos ...string) OptionFunc {
 //   - proxyAddress (string): the SOCKS5 proxy address (e.g., "127.0.0.1:9050").
 //
 // Returns:
-//   - of (Option): an OptionFunc that updates the Proxy field of the options.
-func WithProxy(proxyAddress string) OptionFunc {
+//   - fn (OptionFunc): a functional option that sets the Proxy field in the options.
+func WithProxy(proxyAddress string) (fn OptionFunc) {
 	return func(opts *Options) {
 		opts.Proxy = proxyAddress
 	}
@@ -340,8 +340,8 @@ func WithProxy(proxyAddress string) OptionFunc {
 //   - path (string): the OpenSSL binary path or name.
 //
 // Returns:
-//   - of (Option): an OptionFunc that updates the OpenSSLBinary field of the options.
-func WithOpenSSLBinary(path string) OptionFunc {
+//   - fn (OptionFunc): a functional option that sets the OpenSSLBinary field in the options.
+func WithOpenSSLBinary(path string) (fn OptionFunc) {
 	return func(opts *Options) {
 		opts.OpenSSLBinary = path
 	}

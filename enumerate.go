@@ -1,57 +1,56 @@
-package tlsprobe
+package tls
 
 import (
 	"context"
-	"crypto/tls"
 	"sort"
 	"sync"
+
+	hqgotlsciphers "github.com/hueristiq/hq-lib-tls-go/ciphers"
+	hqgotlsclient "github.com/hueristiq/hq-lib-tls-go/client"
 )
 
 // EnumerateVersions reports the TLS versions the server accepts. It probes
 // once per version with the version pinned as both minimum and maximum, using
-// the client's configured mode, timeout, SNI, and proxy.
+// the client's configured config, timeout, SNI, and proxy.
 //
 // A version the server rejects is skipped rather than reported as an error;
 // only a canceled context stops the enumeration.
 func (p *Client) EnumerateVersions(ctx context.Context, host string) (versions []uint16, err error) {
-	candidates := []uint16{
-		sslVersion30,
-		tls.VersionTLS10,
-		tls.VersionTLS11,
-		tls.VersionTLS12,
-		tls.VersionTLS13,
-	}
-
-	for _, version := range candidates {
+	for _, candidate := range hqgotlsclient.SupportedVersions() {
 		if err := ctx.Err(); err != nil {
 			return versions, err
 		}
 
-		prober := p.cloneWith(func(opts *Options) {
-			opts.MinVersion = version
-			opts.MaxVersion = version
+		prober := p.cloneWith(func(config *hqgotlsclient.Config) {
+			config.MinVersion = candidate.ID
+			config.MaxVersion = candidate.ID
+			config.CipherSuites = nil
 		})
 
 		result, probeErr := prober.Inspect(ctx, host)
-		if probeErr != nil || result.TLSVersion != version {
+		if probeErr != nil || result.TLSVersion != candidate.ID {
 			continue
 		}
 
-		versions = append(versions, version)
+		versions = append(versions, candidate.ID)
 	}
 
-	return
+	return versions, nil
 }
 
 // EnumerateCipherSuites reports the cipher suites the server accepts. It
-// probes once per suite from the library's cipher classification, using the
-// client's configured mode, timeout, SNI, and proxy. concurrency bounds the
-// number of probes in flight; values below one are treated as one.
+// probes once per implemented suite, clamping the version range to the
+// versions the suite is defined for. concurrency bounds the number of probes
+// in flight; values below one are treated as one.
 //
 // A suite the server rejects is skipped rather than reported as an error; only
 // a canceled context stops the enumeration.
 func (p *Client) EnumerateCipherSuites(ctx context.Context, host string, concurrency int) (suites []uint16, err error) {
-	candidates := CipherSuitesBySecurity(CipherSecurityInsecure)
+	candidates := hqgotlsciphers.Implemented()
+
+	if len(candidates) == 0 {
+		return nil, nil
+	}
 
 	if concurrency < 1 {
 		concurrency = 1
@@ -61,51 +60,55 @@ func (p *Client) EnumerateCipherSuites(ctx context.Context, host string, concurr
 		concurrency = len(candidates)
 	}
 
-	if len(candidates) == 0 {
-		return
-	}
-
-	work := make(chan uint16)
+	work := make(chan *hqgotlsciphers.Suite)
 	collected := make(chan uint16, len(candidates))
 
-	wg := &sync.WaitGroup{}
+	waitGroup := &sync.WaitGroup{}
 
 	for range concurrency {
-		wg.Add(1)
+		waitGroup.Add(1)
 
 		go func() {
-			defer wg.Done()
+			defer waitGroup.Done()
 
 			for suite := range work {
 				if ctx.Err() != nil {
 					return
 				}
 
-				prober := p.cloneWith(func(opts *Options) {
-					opts.CipherSuites = []uint16{suite}
-				})
-
-				result, probeErr := prober.Inspect(ctx, host)
-				if probeErr != nil || result.CipherSuite != suite {
+				version, ok := suiteVersionWithin(suite, 0, 0)
+				if !ok {
 					continue
 				}
 
-				collected <- suite
+				prober := p.cloneWith(func(config *hqgotlsclient.Config) {
+					config.CipherSuites = []uint16{suite.ID}
+					config.AllowExportCipherSuites = suite.Export
+					config.MinVersion = version
+					config.MaxVersion = version
+				})
+
+				result, probeErr := prober.Inspect(ctx, host)
+				if probeErr != nil || result.CipherSuite != suite.ID {
+					continue
+				}
+
+				collected <- suite.ID
 			}
 		}()
 	}
 
 feed:
-	for _, suite := range candidates {
+	for i := range candidates {
 		select {
-		case work <- suite:
+		case work <- &candidates[i]:
 		case <-ctx.Done():
 			break feed
 		}
 	}
 
 	close(work)
-	wg.Wait()
+	waitGroup.Wait()
 	close(collected)
 
 	for suite := range collected {
@@ -118,20 +121,25 @@ feed:
 
 	err = ctx.Err()
 
-	return
+	return suites, err
 }
 
-// cloneWith returns a client sharing the original dialer but with a copy of
-// the options updated by update.
-func (p *Client) cloneWith(update func(*Options)) (client *Client) {
-	opts := p.options
+// suiteVersionWithin returns the highest version the suite supports within
+// the configured range.
+func suiteVersionWithin(suite *hqgotlsciphers.Suite, minVersion, maxVersion uint16) (version uint16, ok bool) {
+	for _, candidate := range suite.Versions {
+		if minVersion != 0 && candidate < minVersion {
+			continue
+		}
 
-	update(&opts)
+		if maxVersion != 0 && candidate > maxVersion {
+			continue
+		}
 
-	client = &Client{
-		options: opts,
-		dialer:  p.dialer,
+		if candidate > version {
+			version = candidate
+		}
 	}
 
-	return
+	return version, version != 0
 }

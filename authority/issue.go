@@ -33,15 +33,15 @@ import (
 // [WithTLSExtKeyUsage]), the validity period is 365 days from now, and the
 // leaf's key algorithm matches the CA's: an RSA CA passes its key size on to
 // the leaf, and an ECDSA CA passes on its curve.
-func (ca *CertificateAuthority) GenerateTLSCertificate(hosts []string, ofs ...IssueOptionFunc) (certificate *x509.Certificate, privateKey crypto.Signer, err error) {
+func (ca *CA) GenerateTLSCertificate(hosts []string, ofs ...IssueOptionFunc) (certificate *x509.Certificate, privateKey crypto.Signer, err error) {
 	if ca == nil {
-		err = errCertificateAuthorityNil
+		err = errCANil
 
 		return nil, nil, err
 	}
 
 	if ca.caCertificate == nil || ca.caCertificatePrivateKey == nil {
-		err = errCertificateAuthorityNotInitialized
+		err = errCANotInitialized
 
 		return nil, nil, err
 	}
@@ -244,15 +244,15 @@ func (ca *CertificateAuthority) GenerateTLSCertificate(hosts []string, ofs ...Is
 // The returned bundle chains to the CA certificate: Certificate[0] is the leaf
 // certificate, Certificate[1] is the CA certificate, and the Leaf field is
 // populated.
-func (ca *CertificateAuthority) TLSCertificate(hostname string) (certificate *tls.Certificate, err error) {
+func (ca *CA) TLSCertificate(hostname string) (certificate *tls.Certificate, err error) {
 	if ca == nil {
-		err = errCertificateAuthorityNil
+		err = errCANil
 
 		return nil, err
 	}
 
 	if ca.caCertificate == nil || ca.caCertificatePrivateKey == nil {
-		err = errCertificateAuthorityNotInitialized
+		err = errCANotInitialized
 
 		return nil, err
 	}
@@ -276,15 +276,15 @@ func (ca *CertificateAuthority) TLSCertificate(hostname string) (certificate *tl
 // Organization default to the CSR's subject values and can be overridden with
 // [WithTLSCommonName] and [WithTLSOrganization]; the subject alternative names
 // (DNS names, IP addresses, email addresses, and URIs) are copied from the CSR.
-func (ca *CertificateAuthority) SignCSR(csr *x509.CertificateRequest, ofs ...IssueOptionFunc) (certificate *x509.Certificate, err error) {
+func (ca *CA) SignCSR(csr *x509.CertificateRequest, ofs ...IssueOptionFunc) (certificate *x509.Certificate, err error) {
 	if ca == nil {
-		err = errCertificateAuthorityNil
+		err = errCANil
 
 		return nil, err
 	}
 
 	if ca.caCertificate == nil || ca.caCertificatePrivateKey == nil {
-		err = errCertificateAuthorityNotInitialized
+		err = errCANotInitialized
 
 		return nil, err
 	}
@@ -424,12 +424,12 @@ func (ca *CertificateAuthority) SignCSR(csr *x509.CertificateRequest, ofs ...Iss
 // Note that the GetCertificate hook mints a new key pair for every distinct requested hostname;
 // pass [WithAllowedHosts] to restrict issuance to known names and avoid CPU exhaustion from
 // unbounded certificate generation on Internet-facing servers.
-func (ca *CertificateAuthority) NewTLSConfig(ofs ...TLSConfigMutator) (cfg *tls.Config) {
+func (ca *CA) NewTLSConfig(ofs ...TLSConfigMutator) (cfg *tls.Config) {
 	// A nil authority behaves as an uninitialized one: the returned configuration
 	// fails every handshake with an error instead of silently serving TLS without
 	// dynamic certificates.
 	if ca == nil {
-		ca = &CertificateAuthority{}
+		ca = &CA{}
 	}
 
 	cfg = &tls.Config{
@@ -475,12 +475,12 @@ func (ca *CertificateAuthority) NewTLSConfig(ofs ...TLSConfigMutator) (cfg *tls.
 // Note that the GetCertificate hook mints a new key pair for every distinct requested hostname;
 // pass [WithAllowedHosts] to restrict issuance to known names and avoid CPU exhaustion from
 // unbounded certificate generation on Internet-facing servers.
-func (ca *CertificateAuthority) NewTLSConfigWithHost(hostname string, ofs ...TLSConfigMutator) (cfg *tls.Config) {
+func (ca *CA) NewTLSConfigWithHost(hostname string, ofs ...TLSConfigMutator) (cfg *tls.Config) {
 	// A nil authority behaves as an uninitialized one: the returned configuration
 	// fails every handshake with an error instead of silently serving TLS without
 	// dynamic certificates.
 	if ca == nil {
-		ca = &CertificateAuthority{}
+		ca = &CA{}
 	}
 
 	cfg = &tls.Config{
@@ -527,7 +527,7 @@ func (ca *CertificateAuthority) NewTLSConfigWithHost(hostname string, ofs ...TLS
 // A panic during generation is recovered and converted into an error: the leader and every
 // waiter receive it, and the in-flight entry is removed, so waiting handshake goroutines never
 // block forever and a panicking host is not poisoned permanently.
-func (ca *CertificateAuthority) getTLSCertificate(hostname string) (certificate *tls.Certificate, err error) {
+func (ca *CA) getTLSCertificate(hostname string) (certificate *tls.Certificate, err error) {
 	host := normalizeHost(hostname)
 
 	if ca.cache != nil {
@@ -598,7 +598,7 @@ func (ca *CertificateAuthority) getTLSCertificate(hostname string) (certificate 
 //
 // Because in-flight generation is deduplicated per host in getTLSCertificate, at most one
 // goroutine runs this method for a given host at a time.
-func (ca *CertificateAuthority) generateAndCacheTLSCertificate(host string) (certificate *tls.Certificate, err error) {
+func (ca *CA) generateAndCacheTLSCertificate(host string) (certificate *tls.Certificate, err error) {
 	leafCertificate, leafPrivateKey, err := ca.GenerateTLSCertificate([]string{host}, WithTLSValidFor(defaultLeafCertificateValidity))
 	if err != nil {
 		err = hqgoerrors.Wrapf(err, "generating TLS certificate for host %q", host)
@@ -616,7 +616,7 @@ func (ca *CertificateAuthority) generateAndCacheTLSCertificate(host string) (cer
 	}
 
 	if ca.cache != nil {
-		if err = ca.cache.Set(host, &hqgotlsauthoritycache.CertificateCacheEntry{
+		if err = ca.cache.Set(host, &hqgotlsauthoritycache.Entry{
 			Certificate: certificate,
 			CreatedAt:   time.Now(),
 		}); err != nil {
@@ -630,7 +630,7 @@ func (ca *CertificateAuthority) generateAndCacheTLSCertificate(host string) (cer
 // isCacheEntryValid reports whether a cached certificate may still be served: the entry must have
 // been stored in the past (a future CreatedAt is never fresh), be younger than the configured
 // maximum age, and the certificate itself must not have expired.
-func (ca *CertificateAuthority) isCacheEntryValid(entry *hqgotlsauthoritycache.CertificateCacheEntry) (valid bool) {
+func (ca *CA) isCacheEntryValid(entry *hqgotlsauthoritycache.Entry) (valid bool) {
 	if entry.Certificate == nil || entry.Certificate.Leaf == nil {
 		return false
 	}

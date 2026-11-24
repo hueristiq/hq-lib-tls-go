@@ -51,7 +51,7 @@ func newTestCACertificatePrivateKey(t *testing.T, ofs ...CAOptionFunc) (certific
 	return certificate, privateKey
 }
 
-func newTestAuthority(t *testing.T, ofs ...OptionFunc) (ca *CertificateAuthority) {
+func newTestAuthority(t *testing.T, ofs ...OptionFunc) (ca *CA) {
 	t.Helper()
 
 	caCertificate, caPrivateKey := newTestCACertificatePrivateKey(t)
@@ -72,14 +72,14 @@ func mustNewInMemory(t *testing.T, maxSize int) (c *hqgotlsauthoritycache.InMemo
 	return c
 }
 
-type recordingCertificateCache struct {
+type recordingCache struct {
 	mutex   sync.Mutex
-	entries map[string]*hqgotlsauthoritycache.CertificateCacheEntry
+	entries map[string]*hqgotlsauthoritycache.Entry
 	gets    int
 	sets    int
 }
 
-func (c *recordingCertificateCache) Get(host string) (entry *hqgotlsauthoritycache.CertificateCacheEntry, found bool) {
+func (c *recordingCache) Get(host string) (entry *hqgotlsauthoritycache.Entry, found bool) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
@@ -90,7 +90,7 @@ func (c *recordingCertificateCache) Get(host string) (entry *hqgotlsauthoritycac
 	return entry, found
 }
 
-func (c *recordingCertificateCache) Set(host string, entry *hqgotlsauthoritycache.CertificateCacheEntry) (err error) {
+func (c *recordingCache) Set(host string, entry *hqgotlsauthoritycache.Entry) (err error) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
@@ -457,7 +457,7 @@ func TestCACertificateReturnsCopy(t *testing.T) {
 	t.Run("nil authority returns nil", func(t *testing.T) {
 		t.Parallel()
 
-		var ca *CertificateAuthority
+		var ca *CA
 
 		assert.Nil(t, ca.CACertificate())
 		assert.Nil(t, ca.CACertificatePrivateKey())
@@ -466,7 +466,7 @@ func TestCACertificateReturnsCopy(t *testing.T) {
 	t.Run("uninitialized authority returns nil", func(t *testing.T) {
 		t.Parallel()
 
-		ca := &CertificateAuthority{}
+		ca := &CA{}
 
 		assert.Nil(t, ca.CACertificate())
 		assert.Nil(t, ca.CACertificatePrivateKey())
@@ -490,19 +490,19 @@ func TestCACertificateReturnsCopy(t *testing.T) {
 	})
 }
 
-func TestZeroValueCertificateAuthority(t *testing.T) {
+func TestZeroValueCA(t *testing.T) {
 	t.Parallel()
 
-	ca := &CertificateAuthority{}
+	ca := &CA{}
 
 	_, _, err := ca.GenerateTLSCertificate([]string{"example.com"})
-	require.ErrorContains(t, err, "CertificateAuthority is not initialized")
+	require.ErrorContains(t, err, "CA is not initialized")
 
 	_, err = ca.SignCSR(newTestCSR(t, "client.example.com", nil))
-	require.ErrorContains(t, err, "CertificateAuthority is not initialized")
+	require.ErrorContains(t, err, "CA is not initialized")
 
 	_, err = ca.TLSCertificate("example.com")
-	require.ErrorContains(t, err, "CertificateAuthority is not initialized")
+	require.ErrorContains(t, err, "CA is not initialized")
 
 	assert.Nil(t, ca.CACertificate())
 	assert.Nil(t, ca.CACertificatePrivateKey())
@@ -511,27 +511,27 @@ func TestZeroValueCertificateAuthority(t *testing.T) {
 	require.NotNil(t, config)
 
 	_, err = config.GetCertificate(&tls.ClientHelloInfo{ServerName: "example.com"})
-	require.ErrorContains(t, err, "CertificateAuthority is not initialized")
+	require.ErrorContains(t, err, "CA is not initialized")
 
 	configWithHost := ca.NewTLSConfigWithHost("fallback.example.com")
 	require.NotNil(t, configWithHost)
 
 	_, err = configWithHost.GetCertificate(&tls.ClientHelloInfo{})
-	require.ErrorContains(t, err, "CertificateAuthority is not initialized")
+	require.ErrorContains(t, err, "CA is not initialized")
 }
 
 func TestTLSCertificateValidation(t *testing.T) {
 	t.Parallel()
 
-	var nilAuthority *CertificateAuthority
+	var nilAuthority *CA
 
 	_, err := nilAuthority.TLSCertificate("example.com")
-	require.ErrorContains(t, err, "CertificateAuthority is nil")
+	require.ErrorContains(t, err, "CA is nil")
 
-	zeroAuthority := &CertificateAuthority{}
+	zeroAuthority := &CA{}
 
 	_, err = zeroAuthority.TLSCertificate("example.com")
-	require.ErrorContains(t, err, "CertificateAuthority is not initialized")
+	require.ErrorContains(t, err, "CA is not initialized")
 }
 
 func TestTLSCertificateSuccess(t *testing.T) {
@@ -556,7 +556,7 @@ func TestTLSCertificateSuccess(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestTLSCertificateCacheHit(t *testing.T) {
+func TestTLSCacheHit(t *testing.T) {
 	t.Parallel()
 
 	ca := newTestAuthority(t, WithCache(mustNewInMemory(t, 8)))
@@ -644,7 +644,7 @@ func TestGetTLSCertificateRegeneratesAfterExpiry(t *testing.T) {
 	entry, found := certificateCache.Get("example.com")
 	require.True(t, found)
 
-	require.NoError(t, certificateCache.Set("example.com", &hqgotlsauthoritycache.CertificateCacheEntry{
+	require.NoError(t, certificateCache.Set("example.com", &hqgotlsauthoritycache.Entry{
 		Certificate: entry.Certificate,
 		CreatedAt:   time.Now().Add(-2 * time.Minute),
 	}))
@@ -746,19 +746,19 @@ func TestNewTLSConfigWithHostFallback(t *testing.T) {
 func TestTLSConfigNilCA(t *testing.T) {
 	t.Parallel()
 
-	var ca *CertificateAuthority
+	var ca *CA
 
 	config := ca.NewTLSConfig()
 	require.NotNil(t, config)
 
 	_, err := config.GetCertificate(&tls.ClientHelloInfo{ServerName: "example.com"})
-	require.ErrorContains(t, err, "CertificateAuthority is not initialized")
+	require.ErrorContains(t, err, "CA is not initialized")
 
 	configWithHost := ca.NewTLSConfigWithHost("fallback.example.com")
 	require.NotNil(t, configWithHost)
 
 	_, err = configWithHost.GetCertificate(&tls.ClientHelloInfo{})
-	require.ErrorContains(t, err, "CertificateAuthority is not initialized")
+	require.ErrorContains(t, err, "CA is not initialized")
 }
 
 func TestTLSServerHandshake(t *testing.T) {
@@ -945,19 +945,19 @@ func TestGenerateTLSCertificateValidation(t *testing.T) {
 
 	ca := newTestAuthority(t)
 
-	unsupportedKeyAuthority := &CertificateAuthority{
+	unsupportedKeyAuthority := &CA{
 		caCertificate:           &x509.Certificate{NotAfter: time.Now().Add(time.Hour)},
 		caCertificatePrivateKey: fakeSigner{},
 	}
 
-	tinyRSAKeyAuthority := &CertificateAuthority{
+	tinyRSAKeyAuthority := &CA{
 		caCertificate: &x509.Certificate{NotAfter: time.Now().Add(time.Hour)},
 		caCertificatePrivateKey: &rsa.PrivateKey{
 			PublicKey: rsa.PublicKey{N: big.NewInt(143), E: 3},
 		},
 	}
 
-	nilCurveAuthority := &CertificateAuthority{
+	nilCurveAuthority := &CA{
 		caCertificate: &x509.Certificate{NotAfter: time.Now().Add(time.Hour)},
 		caCertificatePrivateKey: &ecdsa.PrivateKey{
 			PublicKey: ecdsa.PublicKey{X: big.NewInt(1), Y: big.NewInt(1)}, //nolint:staticcheck // invalid-key fixture.
@@ -967,13 +967,13 @@ func TestGenerateTLSCertificateValidation(t *testing.T) {
 
 	tests := []struct {
 		name        string
-		ca          *CertificateAuthority
+		ca          *CA
 		hosts       []string
 		ofs         []IssueOptionFunc
 		errContains string
 	}{
-		{"nil authority", nil, []string{"example.com"}, nil, "CertificateAuthority is nil"},
-		{"uninitialized authority", &CertificateAuthority{}, []string{"example.com"}, nil, "CertificateAuthority is not initialized"},
+		{"nil authority", nil, []string{"example.com"}, nil, "CA is nil"},
+		{"uninitialized authority", &CA{}, []string{"example.com"}, nil, "CA is not initialized"},
 		{"empty hosts list", ca, nil, nil, "hosts list is empty"},
 		{"empty hostname in hosts list", ca, []string{""}, nil, "empty hostname in hosts list"},
 		{"empty common name", ca, []string{"example.com"}, []IssueOptionFunc{WithTLSCommonName("")}, "CommonName is empty"},
@@ -1237,13 +1237,13 @@ func TestSignCSRValidation(t *testing.T) {
 
 	tests := []struct {
 		name        string
-		ca          *CertificateAuthority
+		ca          *CA
 		csr         *x509.CertificateRequest
 		ofs         []IssueOptionFunc
 		errContains string
 	}{
-		{"nil authority", nil, validCSR, nil, "CertificateAuthority is nil"},
-		{"uninitialized authority", &CertificateAuthority{}, validCSR, nil, "CertificateAuthority is not initialized"},
+		{"nil authority", nil, validCSR, nil, "CA is nil"},
+		{"uninitialized authority", &CA{}, validCSR, nil, "CA is not initialized"},
 		{"nil CSR", ca, nil, nil, "CSR is nil"},
 		{"tampered CSR signature", ca, tamperedCSR, nil, "verifying CSR signature"},
 		{"empty common name", ca, emptyCNCSR, nil, "CommonName is empty"},
@@ -1739,15 +1739,15 @@ func TestIsCacheEntryValid(t *testing.T) {
 
 	tests := []struct {
 		name  string
-		entry *hqgotlsauthoritycache.CertificateCacheEntry
+		entry *hqgotlsauthoritycache.Entry
 		want  bool
 	}{
-		{"nil certificate", &hqgotlsauthoritycache.CertificateCacheEntry{Certificate: nil, CreatedAt: now}, false},
-		{"nil leaf", &hqgotlsauthoritycache.CertificateCacheEntry{Certificate: &tls.Certificate{}, CreatedAt: now}, false},
-		{"fresh entry", &hqgotlsauthoritycache.CertificateCacheEntry{Certificate: &tls.Certificate{Leaf: &x509.Certificate{NotAfter: now.Add(time.Hour)}}, CreatedAt: now}, true},
-		{"entry created in the future", &hqgotlsauthoritycache.CertificateCacheEntry{Certificate: &tls.Certificate{Leaf: &x509.Certificate{NotAfter: now.Add(2 * time.Hour)}}, CreatedAt: now.Add(time.Hour)}, false},
-		{"entry older than max age", &hqgotlsauthoritycache.CertificateCacheEntry{Certificate: &tls.Certificate{Leaf: &x509.Certificate{NotAfter: now.Add(time.Hour)}}, CreatedAt: now.Add(-2 * time.Hour)}, false},
-		{"expired leaf", &hqgotlsauthoritycache.CertificateCacheEntry{Certificate: &tls.Certificate{Leaf: &x509.Certificate{NotAfter: now.Add(-time.Hour)}}, CreatedAt: now}, false},
+		{"nil certificate", &hqgotlsauthoritycache.Entry{Certificate: nil, CreatedAt: now}, false},
+		{"nil leaf", &hqgotlsauthoritycache.Entry{Certificate: &tls.Certificate{}, CreatedAt: now}, false},
+		{"fresh entry", &hqgotlsauthoritycache.Entry{Certificate: &tls.Certificate{Leaf: &x509.Certificate{NotAfter: now.Add(time.Hour)}}, CreatedAt: now}, true},
+		{"entry created in the future", &hqgotlsauthoritycache.Entry{Certificate: &tls.Certificate{Leaf: &x509.Certificate{NotAfter: now.Add(2 * time.Hour)}}, CreatedAt: now.Add(time.Hour)}, false},
+		{"entry older than max age", &hqgotlsauthoritycache.Entry{Certificate: &tls.Certificate{Leaf: &x509.Certificate{NotAfter: now.Add(time.Hour)}}, CreatedAt: now.Add(-2 * time.Hour)}, false},
+		{"expired leaf", &hqgotlsauthoritycache.Entry{Certificate: &tls.Certificate{Leaf: &x509.Certificate{NotAfter: now.Add(-time.Hour)}}, CreatedAt: now}, false},
 	}
 
 	for _, tt := range tests {
@@ -1776,7 +1776,7 @@ func TestTLSCertificateRegeneratesWithoutCache(t *testing.T) {
 func TestTLSCertificateServesFromCustomCache(t *testing.T) {
 	t.Parallel()
 
-	certificateCache := &recordingCertificateCache{entries: make(map[string]*hqgotlsauthoritycache.CertificateCacheEntry)}
+	certificateCache := &recordingCache{entries: make(map[string]*hqgotlsauthoritycache.Entry)}
 
 	ca := newTestAuthority(t, WithCache(certificateCache))
 
@@ -1806,7 +1806,7 @@ func TestGetTLSCertificateLeaderPanicUnblocksWaiters(t *testing.T) {
 	// leader down the panic path without crashing the test process. The CA
 	// certificate needs a future NotAfter so issuance reaches that point
 	// instead of failing the validity clamp.
-	ca := &CertificateAuthority{
+	ca := &CA{
 		caCertificate:           &x509.Certificate{NotAfter: time.Now().Add(time.Hour)},
 		caCertificatePrivateKey: ed25519.PrivateKey{0x01, 0x02},
 	}
@@ -2366,11 +2366,11 @@ func TestWithAllowedHostsRequiresWrappedHandler(t *testing.T) {
 }
 
 type secondLookupCache struct {
-	entry *hqgotlsauthoritycache.CertificateCacheEntry
+	entry *hqgotlsauthoritycache.Entry
 	gets  int
 }
 
-func (c *secondLookupCache) Get(string) (entry *hqgotlsauthoritycache.CertificateCacheEntry, found bool) {
+func (c *secondLookupCache) Get(string) (entry *hqgotlsauthoritycache.Entry, found bool) {
 	c.gets++
 
 	if c.gets == 1 {
@@ -2380,14 +2380,14 @@ func (c *secondLookupCache) Get(string) (entry *hqgotlsauthoritycache.Certificat
 	return c.entry, true
 }
 
-func (c *secondLookupCache) Set(string, *hqgotlsauthoritycache.CertificateCacheEntry) (err error) {
+func (c *secondLookupCache) Set(string, *hqgotlsauthoritycache.Entry) (err error) {
 	return nil
 }
 
 func TestGetTLSCertificateSecondCacheLookup(t *testing.T) {
 	t.Parallel()
 
-	entry := &hqgotlsauthoritycache.CertificateCacheEntry{
+	entry := &hqgotlsauthoritycache.Entry{
 		Certificate: &tls.Certificate{Leaf: &x509.Certificate{NotAfter: time.Now().Add(time.Hour)}},
 		CreatedAt:   time.Now(),
 	}

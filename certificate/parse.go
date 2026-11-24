@@ -29,7 +29,7 @@ type Subject struct {
 	Province           []string
 }
 
-// Certificate is the parsed form of one X.509 certificate.
+// Cert is the parsed form of one X.509 certificate.
 //
 // Fields:
 //   - Raw ([]byte): the DER-encoded certificate.
@@ -45,7 +45,7 @@ type Subject struct {
 //   - IssuingCertificateURL ([]string): the CA issuer URLs.
 //   - OCSPServer ([]string): the OCSP responder URLs.
 //   - CRLDistributionPoints ([]string): the CRL distribution point URLs.
-type Certificate struct {
+type Cert struct {
 	Raw                   []byte
 	RawSubject            []byte
 	RawIssuer             []byte
@@ -63,17 +63,17 @@ type Certificate struct {
 
 // Parse parses a DER certificate chain (leaf first) with the Go standard
 // library's crypto/x509.
-func Parse(chainDER [][]byte) (certificates []*Certificate, err error) {
+func Parse(chainDER [][]byte) (certificates []*Cert, err error) {
 	if len(chainDER) == 0 {
 		err = hqgoerrors.New("invalid input, certificate chain is empty")
 
 		return nil, err
 	}
 
-	certificates = make([]*Certificate, 0, len(chainDER))
+	certificates = make([]*Cert, 0, len(chainDER))
 
 	for _, raw := range chainDER {
-		var certificate *Certificate
+		var certificate *Cert
 
 		certificate, err = parseOne(raw)
 		if err != nil {
@@ -90,7 +90,7 @@ func Parse(chainDER [][]byte) (certificates []*Certificate, err error) {
 
 // parseOne parses a single DER certificate with the Go standard library and
 // extracts the metadata.
-func parseOne(raw []byte) (certificate *Certificate, err error) {
+func parseOne(raw []byte) (certificate *Cert, err error) {
 	if len(raw) == 0 {
 		err = hqgoerrors.New("invalid input, certificate is empty")
 
@@ -109,8 +109,8 @@ func parseOne(raw []byte) (certificate *Certificate, err error) {
 
 // extractCertificate copies the metadata of a standard library certificate
 // into the package's Certificate type.
-func extractCertificate(certificate *x509.Certificate) (extracted *Certificate) {
-	extracted = &Certificate{
+func extractCertificate(certificate *x509.Certificate) (extracted *Cert) {
+	extracted = &Cert{
 		Raw:                   certificate.Raw,
 		RawSubject:            certificate.RawSubject,
 		RawIssuer:             certificate.RawIssuer,
@@ -158,7 +158,7 @@ func ipStrings(addresses []net.IP) (rendered []string) {
 // name match, a wildcard match (with a single label under the wildcard),
 // or an exact IP match. Hosts are compared case-insensitively with a
 // trailing dot ignored.
-func (c *Certificate) CoversHost(host string) (covered bool) {
+func (c *Cert) CoversHost(host string) (covered bool) {
 	if c == nil {
 		return false
 	}
@@ -223,7 +223,7 @@ func normalizeHost(host string) (normalized string) {
 
 // PEMBlock converts the certificate to a "CERTIFICATE" PEM block, per
 // [RFC 7468](https://www.rfc-editor.org/info/rfc7468/).
-func (c *Certificate) PEMBlock() (pemBytes []byte) {
+func (c *Cert) PEMBlock() (pemBytes []byte) {
 	block := &pem.Block{
 		Type:  "CERTIFICATE",
 		Bytes: c.Raw,

@@ -5,18 +5,18 @@ import (
 	"time"
 )
 
-// CertificateCacheEntry is a cached TLS certificate bundle and its storage time.
+// Entry is a cached TLS certificate bundle and its storage time.
 //
 // Fields:
 //   - Certificate (*tls.Certificate): the cached certificate bundle (leaf plus CA chain).
 //   - CreatedAt (time.Time): when the entry was stored; the authority compares it against
 //     its maximum cache age, and [InMemory] uses it for oldest-first eviction.
-type CertificateCacheEntry struct {
+type Entry struct {
 	Certificate *tls.Certificate
 	CreatedAt   time.Time
 }
 
-// CertificateCache defines the contract for storing dynamically generated
+// Cache defines the contract for storing dynamically generated
 // certificates, keyed by normalized hostname.
 //
 // Implementations provide pure storage: the authority decides whether a
@@ -36,7 +36,7 @@ type CertificateCacheEntry struct {
 // the cache may keep the entry passed to Set rather than copying it, so the
 // caller must not mutate it afterwards either. The package ships [InMemory];
 // the authority accepts any implementation through its configuration.
-type CertificateCache interface {
+type Cache interface {
 	// Get returns the entry stored for host.
 	//
 	// The call must not block on certificate generation or network I/O: a
@@ -46,11 +46,11 @@ type CertificateCache interface {
 	//   - host (string): the normalized hostname to look up.
 	//
 	// Returns:
-	//   - entry (*CertificateCacheEntry): the stored entry, or nil when none
+	//   - entry (*Entry): the stored entry, or nil when none
 	//     is stored.
 	//   - found (bool): true when an entry is stored for host; false
 	//     otherwise, in which case entry is nil.
-	Get(host string) (entry *CertificateCacheEntry, found bool)
+	Get(host string) (entry *Entry, found bool)
 
 	// Set stores entry for host, replacing any existing entry.
 	//
@@ -59,9 +59,9 @@ type CertificateCache interface {
 	//
 	// Parameters:
 	//   - host (string): the normalized hostname to store the entry under.
-	//   - entry (*CertificateCacheEntry): the entry to store; must not be nil.
+	//   - entry (*Entry): the entry to store; must not be nil.
 	//
 	// Returns:
 	//   - err (error): non-nil when entry is nil or storage fails.
-	Set(host string, entry *CertificateCacheEntry) (err error)
+	Set(host string, entry *Entry) (err error)
 }

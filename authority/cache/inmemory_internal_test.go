@@ -38,7 +38,7 @@ func TestInMemorySetGetRoundtrip(t *testing.T) {
 	c, err := NewInMemory(2)
 	require.NoError(t, err)
 
-	entry := &CertificateCacheEntry{
+	entry := &Entry{
 		Certificate: &tls.Certificate{},
 		CreatedAt:   time.Now(),
 	}
@@ -56,7 +56,7 @@ func TestInMemoryGetMissOnUnknownHost(t *testing.T) {
 	c, err := NewInMemory(2)
 	require.NoError(t, err)
 
-	setCertificate(t, c, "example.com", &CertificateCacheEntry{CreatedAt: time.Now()})
+	setCertificate(t, c, "example.com", &Entry{CreatedAt: time.Now()})
 
 	entry, found := c.Get("unknown.example.com")
 	assert.False(t, found)
@@ -90,10 +90,10 @@ func TestInMemoryEvictsOldestEntryWhenFull(t *testing.T) {
 
 	now := time.Now()
 
-	setCertificate(t, c, "oldest.example.com", &CertificateCacheEntry{CreatedAt: now.Add(-3 * time.Hour)})
-	setCertificate(t, c, "newest.example.com", &CertificateCacheEntry{CreatedAt: now.Add(-time.Hour)})
+	setCertificate(t, c, "oldest.example.com", &Entry{CreatedAt: now.Add(-3 * time.Hour)})
+	setCertificate(t, c, "newest.example.com", &Entry{CreatedAt: now.Add(-time.Hour)})
 
-	setCertificate(t, c, "added.example.com", &CertificateCacheEntry{CreatedAt: now})
+	setCertificate(t, c, "added.example.com", &Entry{CreatedAt: now})
 
 	_, found := c.Get("oldest.example.com")
 	assert.False(t, found)
@@ -125,10 +125,10 @@ func TestInMemorySetExistingHostOverwritesWithoutEviction(t *testing.T) {
 
 	now := time.Now()
 
-	setCertificate(t, c, "a.example.com", &CertificateCacheEntry{CreatedAt: now.Add(-3 * time.Hour)})
-	setCertificate(t, c, "b.example.com", &CertificateCacheEntry{CreatedAt: now.Add(-time.Hour)})
+	setCertificate(t, c, "a.example.com", &Entry{CreatedAt: now.Add(-3 * time.Hour)})
+	setCertificate(t, c, "b.example.com", &Entry{CreatedAt: now.Add(-time.Hour)})
 
-	replacement := &CertificateCacheEntry{
+	replacement := &Entry{
 		Certificate: &tls.Certificate{},
 		CreatedAt:   now,
 	}
@@ -162,7 +162,7 @@ func TestInMemoryConcurrentGetSet(t *testing.T) {
 			for j := range 100 {
 				host := hosts[(i+j)%len(hosts)]
 
-				setCertificate(t, c, host, &CertificateCacheEntry{CreatedAt: time.Now()})
+				setCertificate(t, c, host, &Entry{CreatedAt: time.Now()})
 
 				_, _ = c.Get(host)
 			}
@@ -172,7 +172,7 @@ func TestInMemoryConcurrentGetSet(t *testing.T) {
 	wg.Wait()
 }
 
-func setCertificate(t *testing.T, c *InMemory, host string, entry *CertificateCacheEntry) {
+func setCertificate(t *testing.T, c *InMemory, host string, entry *Entry) {
 	t.Helper()
 	assert.NoError(t, c.Set(host, entry))
 }

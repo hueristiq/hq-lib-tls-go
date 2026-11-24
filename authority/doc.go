@@ -12,14 +12,14 @@
 //     ([SaveCertificatePrivateKeyToFiles],
 //     [LoadCertificatePrivateKeyFromFiles]) move certificates to and from
 //     disk.
-//   - A long-lived signing authority. [CertificateAuthority], constructed with
+//   - A long-lived signing authority. [CA], constructed with
 //     [New] or [NewFromPEM], issues leaf certificates on demand through
-//     [CertificateAuthority.GenerateTLSCertificate] and signs certificate
-//     signing requests through [CertificateAuthority.SignCSR].
-//     [CertificateAuthority.NewTLSConfig] returns a [crypto/tls.Config] whose
+//     [CA.GenerateTLSCertificate] and signs certificate
+//     signing requests through [CA.SignCSR].
+//     [CA.NewTLSConfig] returns a [crypto/tls.Config] whose
 //     GetCertificate hook mints a certificate for the hostname a client
 //     requests via Server Name Indication (SNI);
-//     [CertificateAuthority.TLSCertificate] returns the same bundled
+//     [CA.TLSCertificate] returns the same bundled
 //     *tls.Certificate (leaf plus CA chain) for a host programmatically. This
 //     suits TLS-intercepting proxies and multi-tenant servers that cannot
 //     enumerate their hostnames in advance.
@@ -35,8 +35,8 @@
 //     subject, validity, and extended key usages. The validity defaults to 365
 //     days and is clamped to the CA's expiry.
 //   - [TLSConfigMutator] configures the [crypto/tls.Config] returned by
-//     [CertificateAuthority.NewTLSConfig] and
-//     [CertificateAuthority.NewTLSConfigWithHost]; [WithNextProtos] and
+//     [CA.NewTLSConfig] and
+//     [CA.NewTLSConfigWithHost]; [WithNextProtos] and
 //     [WithAllowedHosts] cover ALPN and SNI allowlisting.
 //   - [OptionFunc] over [Options] configures the authority itself: the optional
 //     certificate cache ([WithCache]) and its maximum age
@@ -105,17 +105,18 @@
 //
 // # Concurrency
 //
-// A [CertificateAuthority] is safe for concurrent use by multiple goroutines.
+// A [CA] is safe for concurrent use by multiple goroutines.
 // Concurrent requests for the same hostname share a single in-flight
 // generation, so a burst of handshakes does not multiply key-generation work.
 //
 // # Client side
 //
 // Probing remote TLS servers — dialing, fingerprinting, and certificate
-// analysis — lives in the root package, [fingerprint], and [certificate],
-// not here.
+// analysis — lives in the root package, [client], [fingerprint], and
+// [certificate], not here.
 //
 // [cache.NewInMemory]: https://pkg.go.dev/github.com/hueristiq/hq-lib-tls-go/authority/cache#NewInMemory
+// [client]: https://pkg.go.dev/github.com/hueristiq/hq-lib-tls-go/client
 // [fingerprint]: https://pkg.go.dev/github.com/hueristiq/hq-lib-tls-go/fingerprint
 // [certificate]: https://pkg.go.dev/github.com/hueristiq/hq-lib-tls-go/certificate
 package authority

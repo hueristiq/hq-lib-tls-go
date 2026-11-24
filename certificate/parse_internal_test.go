@@ -102,7 +102,7 @@ func TestCoversHost(t *testing.T) {
 		})
 	}
 
-	assert.False(t, (*Certificate)(nil).CoversHost("example.com"))
+	assert.False(t, (*Cert)(nil).CoversHost("example.com"))
 }
 
 func TestPEMBlock(t *testing.T) {

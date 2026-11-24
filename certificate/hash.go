@@ -9,7 +9,7 @@ import (
 
 // MD5 returns the MD5 digest of the certificate's DER encoding, in
 // lowercase hexadecimal.
-func (c *Certificate) MD5() (hash string) {
+func (c *Cert) MD5() (hash string) {
 	sum := md5.Sum(c.Raw) //nolint:gosec // G401: the MD5 fingerprint is explicitly requested.
 
 	return hex.EncodeToString(sum[:])
@@ -17,7 +17,7 @@ func (c *Certificate) MD5() (hash string) {
 
 // SHA1 returns the SHA-1 digest of the certificate's DER encoding, in
 // lowercase hexadecimal.
-func (c *Certificate) SHA1() (hash string) {
+func (c *Cert) SHA1() (hash string) {
 	sum := sha1.Sum(c.Raw) //nolint:gosec // G401: the SHA-1 fingerprint is explicitly requested.
 
 	return hex.EncodeToString(sum[:])
@@ -25,7 +25,7 @@ func (c *Certificate) SHA1() (hash string) {
 
 // SHA256 returns the SHA-256 digest of the certificate's DER encoding, in
 // lowercase hexadecimal.
-func (c *Certificate) SHA256() (hash string) {
+func (c *Cert) SHA256() (hash string) {
 	sum := sha256.Sum256(c.Raw)
 
 	return hex.EncodeToString(sum[:])

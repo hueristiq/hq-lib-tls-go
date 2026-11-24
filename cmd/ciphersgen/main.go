@@ -60,7 +60,7 @@ type cipherSuite struct {
 }
 
 // securityRank maps the dataset's security labels to the client package's
-// CipherSecurity constants.
+// Security constants.
 var securityRank = map[string]int{
 	"insecure":    0,
 	"weak":        1,
@@ -70,10 +70,10 @@ var securityRank = map[string]int{
 
 // securityNames renders the rank back to the constant name.
 var securityNames = map[int]string{
-	0: "CipherSecurityInsecure",
-	1: "CipherSecurityWeak",
-	2: "CipherSecuritySecure",
-	3: "CipherSecurityRecommended",
+	0: "SecurityInsecure",
+	1: "SecurityWeak",
+	2: "SecuritySecure",
+	3: "SecurityRecommended",
 }
 
 func main() {
@@ -111,7 +111,7 @@ func main() {
 		writer = file
 	}
 
-	_, _ = fmt.Fprintf(writer, "package tls\n\n%s", section)
+	_, _ = fmt.Fprintf(writer, "package ciphers\n\n%s", section)
 }
 
 // generateSection fetches the dataset and renders the generated comment and
@@ -182,9 +182,9 @@ func generateSection() (section []byte) {
 	write("//")
 	write("//\tgo generate ./...")
 	write("//")
-	write("// cipherClassification maps cipher suite IDs to their security")
+	write("// classification maps cipher suite IDs to their security")
 	write("// classification.")
-	write("var cipherClassification = map[uint16]CipherSecurity{")
+	write("var classification = map[uint16]Security{")
 
 	for _, item := range entries {
 		_, _ = fmt.Fprintf(&buffer, "\t%#04x: %s,\n", item.id, securityNames[item.rank])

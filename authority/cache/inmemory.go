@@ -7,7 +7,7 @@ import (
 	hqgoerrors "github.com/hueristiq/hq-lib-errors-go"
 )
 
-// InMemory is a [CertificateCache] backed by an in-process map.
+// InMemory is a [Cache] backed by an in-process map.
 //
 // It holds at most maxSize entries; when full and a new host is stored, the entry
 // with the earliest CreatedAt is evicted (oldest-first). Entries are never expired
@@ -29,8 +29,8 @@ type InMemory struct {
 	maxSize int
 }
 
-// Compile-time guard ensuring [InMemory] satisfies [CertificateCache].
-var _ CertificateCache = (*InMemory)(nil)
+// Compile-time guard ensuring [InMemory] satisfies [Cache].
+var _ Cache = (*InMemory)(nil)
 
 // NewInMemory creates an in-memory certificate cache holding at most maxSize entries.
 func NewInMemory(maxSize int) (cache *InMemory, err error) {
@@ -51,7 +51,7 @@ func NewInMemory(maxSize int) (cache *InMemory, err error) {
 // Get returns the entry stored for the given host.
 //
 // The returned entry is the cache's stored entry and must not be mutated.
-func (c *InMemory) Get(host string) (entry *CertificateCacheEntry, found bool) {
+func (c *InMemory) Get(host string) (entry *Entry, found bool) {
 	c.mutex.RLock()
 	defer c.mutex.RUnlock()
 
@@ -69,7 +69,7 @@ func (c *InMemory) Get(host string) (entry *CertificateCacheEntry, found bool) {
 // CreatedAt is evicted first. Storing an existing host never triggers eviction.
 // Eviction pops the root of the byAge min-heap, so a full-cache Set is O(log n);
 // see BenchmarkInMemorySetEvict.
-func (c *InMemory) Set(host string, entry *CertificateCacheEntry) (err error) {
+func (c *InMemory) Set(host string, entry *Entry) (err error) {
 	if entry == nil {
 		return hqgoerrors.New("entry is nil")
 	}
@@ -119,11 +119,11 @@ func (c *InMemory) evictOldest() {
 //
 // Fields:
 //   - host (string): the normalized hostname the entry is stored under.
-//   - entry (*CertificateCacheEntry): the cached certificate bundle and its storage time.
+//   - entry (*Entry): the cached certificate bundle and its storage time.
 //   - index (int): the entry's position in the byAge heap slice; meaningless once popped.
 type heapEntry struct {
 	host  string
-	entry *CertificateCacheEntry
+	entry *Entry
 	index int
 }
 

@@ -30,40 +30,40 @@ const (
 )
 
 const (
-	// errCertificateAuthorityNil is returned by CertificateAuthority methods called on a nil receiver.
-	errCertificateAuthorityNil hqgoerrors.Sentinel = "invalid input, CertificateAuthority is nil"
-	// errCertificateAuthorityNotInitialized is returned by CertificateAuthority methods when the
+	// errCANil is returned by CA methods called on a nil receiver.
+	errCANil hqgoerrors.Sentinel = "invalid input, CA is nil"
+	// errCANotInitialized is returned by CA methods when the
 	// authority is missing its CA certificate or private key.
-	errCertificateAuthorityNotInitialized hqgoerrors.Sentinel = "invalid input, CertificateAuthority is not initialized"
+	errCANotInitialized hqgoerrors.Sentinel = "invalid input, CA is not initialized"
 )
 
-// A CertificateAuthority generates and signs TLS certificates from a single CA certificate and
+// A CA generates and signs TLS certificates from a single CA certificate and
 // its private key. It issues certificates dynamically for the hostname requested via Server Name
-// Indication (SNI). Caching of issued certificates is opt-in: pass a [hqgotlsauthoritycache.CertificateCache]
+// Indication (SNI). Caching of issued certificates is opt-in: pass a [hqgotlsauthoritycache.Cache]
 // via [WithCache] to reuse certificates across requests, or leave it unset (nil cache) to
 // regenerate a certificate on every request.
 //
-// The zero value is not usable: construct a CertificateAuthority with [New] (from an in-memory
+// The zero value is not usable: construct a CA with [New] (from an in-memory
 // certificate and key), with [NewFromPEM] (from PEM bytes), or generate a
 // fresh CA first with [GenerateCACertificatePrivateKey].
 //
-// A CertificateAuthority is safe for concurrent use by multiple goroutines; the in-flight
+// A CA is safe for concurrent use by multiple goroutines; the in-flight
 // generation tracking is guarded by an internal mutex, and a configured cache must be safe
 // for concurrent use as well.
 //
 // Fields:
 //   - caCertificate (*x509.Certificate): the CA certificate used to sign issued certificates.
 //   - caCertificatePrivateKey (crypto.Signer): the private key corresponding to the CA certificate.
-//   - cache (hqgotlsauthoritycache.CertificateCache): the cache of generated certificates, keyed by normalized hostname; nil disables caching.
+//   - cache (hqgotlsauthoritycache.Cache): the cache of generated certificates, keyed by normalized hostname; nil disables caching.
 //   - cacheMaxAge (time.Duration): the maximum age of a cached certificate before it is re-issued.
 //   - ops (*operations): the cryptographic and filesystem operations to use; nil selects the production set.
 //   - inflightMutex (sync.Mutex): guards inflight.
 //   - inflight (map[string]*inflightCall): in-progress certificate generations, keyed by normalized hostname.
-type CertificateAuthority struct {
+type CA struct {
 	caCertificate           *x509.Certificate
 	caCertificatePrivateKey crypto.Signer
 
-	cache       hqgotlsauthoritycache.CertificateCache
+	cache       hqgotlsauthoritycache.Cache
 	cacheMaxAge time.Duration
 
 	ops *operations
@@ -75,7 +75,7 @@ type CertificateAuthority struct {
 // CACertificate returns a copy of the CA's X.509 certificate.
 //
 // The returned certificate is a shallow copy, so mutating its fields does not affect the authority.
-func (ca *CertificateAuthority) CACertificate() (certificate *x509.Certificate) {
+func (ca *CA) CACertificate() (certificate *x509.Certificate) {
 	if ca == nil || ca.caCertificate == nil {
 		return nil
 	}
@@ -86,7 +86,7 @@ func (ca *CertificateAuthority) CACertificate() (certificate *x509.Certificate) 
 }
 
 // CACertificatePrivateKey returns the CA's private key.
-func (ca *CertificateAuthority) CACertificatePrivateKey() (privateKey crypto.Signer) {
+func (ca *CA) CACertificatePrivateKey() (privateKey crypto.Signer) {
 	if ca == nil {
 		return nil
 	}
@@ -144,11 +144,11 @@ func isASCII(s string) (isASCII bool) {
 	return true
 }
 
-// New creates a CertificateAuthority from an in-memory CA certificate and
+// New creates a CA from an in-memory CA certificate and
 // private key. The certificate must be a CA (IsCA with valid basic
 // constraints), and the key must match the certificate's public key. Options
 // configure the optional certificate cache.
-func New(caCertificate *x509.Certificate, caPrivateKey crypto.Signer, ofs ...OptionFunc) (ca *CertificateAuthority, err error) {
+func New(caCertificate *x509.Certificate, caPrivateKey crypto.Signer, ofs ...OptionFunc) (ca *CA, err error) {
 	if caCertificate == nil {
 		err = hqgoerrors.New("invalid input, CA certificate is nil")
 
@@ -257,7 +257,7 @@ func New(caCertificate *x509.Certificate, caPrivateKey crypto.Signer, ofs ...Opt
 		return nil, err
 	}
 
-	ca = &CertificateAuthority{
+	ca = &CA{
 		caCertificate:           caCertificate,
 		caCertificatePrivateKey: caPrivateKey,
 		cache:                   opts.Cache,
@@ -268,16 +268,16 @@ func New(caCertificate *x509.Certificate, caPrivateKey crypto.Signer, ofs ...Opt
 	return ca, nil
 }
 
-// NewFromPEM initializes a new CertificateAuthority from PEM-encoded certificate and private key bytes.
+// NewFromPEM initializes a new CA from PEM-encoded certificate and private key bytes.
 //
 // It parses the certificate and private key from the provided byte slices, supporting PKCS#1, PKCS#8, and ECDSA private key formats.
-// The parsed certificate and private key are then used to initialize a CertificateAuthority.
+// The parsed certificate and private key are then used to initialize a CA.
 //
 // The certificate must be in a "CERTIFICATE" PEM block, and the private key in
 // an "RSA PRIVATE KEY" (PKCS#1), "EC PRIVATE KEY" (SEC 1), or "PRIVATE KEY"
 // (PKCS#8) block. The parsed pair is passed to [New], so all of [New]'s
 // validation and options apply.
-func NewFromPEM(caCertificateBytes, caPrivateKeyBytes []byte, ofs ...OptionFunc) (ca *CertificateAuthority, err error) {
+func NewFromPEM(caCertificateBytes, caPrivateKeyBytes []byte, ofs ...OptionFunc) (ca *CA, err error) {
 	if len(caCertificateBytes) == 0 {
 		err = hqgoerrors.New("invalid input, CA certificate bytes are empty")
 
@@ -414,7 +414,7 @@ func isLowercaseASCII(s string) (isLower bool) {
 // [defaultOperations]; tests replace individual fields to exercise failure
 // paths that the underlying standard library call cannot produce on demand.
 //
-// A nil [CertificateAuthority.ops] means the default operations.
+// A nil [CA.ops] means the default operations.
 //
 // Fields:
 //   - rsaGenerateKey: RSA key generation ([rsa.GenerateKey]).

@@ -28,10 +28,10 @@
 
 - **Certificate authority:** generate RSA-2048, ECDSA P-256, or Ed25519 CAs and issue leaves for DNS, IP, email, or URI names.
 - **SNI server:** per-host certificates, TLS 1.2 minimum, ALPN, `WithAllowedHosts`, and optional caching.
-- **Connection modes:** dial through `crypto/tls` or the OpenSSL `s_client` binary.
+- **Native TLS client:** SSL 3.0 through TLS 1.3, export cipher suites, full decrypted handshake traces, and a `crypto/tls`-familiar API.
 - **Fingerprints:** JA3/JA3S segments and JARM from ten ClientHello probes.
 - **Certificate analysis:** tolerant chain parsing, metadata, hostname coverage, digests, trust, and revocation.
-- **Cipher classification:** embedded suites marked insecure, weak, secure, or recommended.
+- **Cipher classification:** embedded suites marked insecure, weak, secure, or recommended, with IANA and OpenSSL names.
 
 ## Installation
 
@@ -45,7 +45,7 @@ Requires Go 1.26.0 or later.
 
 ## Usage
 
-The serving API lives in the `authority` subpackage; the client API lives in the module root, `fingerprint`, and `certificate`. The examples below import them under the `hqgotlsauthority`, `hqgotls`, `hqgotlsfingerprint`, and `hqgotlscertificate` aliases.
+The serving API lives in the `authority` subpackage; the client API lives in the module root, `client`, `ciphers`, `fingerprint`, `certificate`, and `certificate/verify`. The examples below import them under the `hqgotlsauthority`, `hqgotls`, `hqgotlsclient`, `hqgotlsciphers`, `hqgotlsfingerprint`, `hqgotlscertificate`, and `hqgotlscertificateverify` aliases.
 
 ```go
 import (
@@ -54,6 +54,9 @@ import (
 	hqgotlscertificate "github.com/hueristiq/hq-lib-tls-go/certificate"
 	hqgotls "github.com/hueristiq/hq-lib-tls-go"
 	hqgotlsfingerprint "github.com/hueristiq/hq-lib-tls-go/fingerprint"
+	hqgotlscertificateverify "github.com/hueristiq/hq-lib-tls-go/certificate/verify"
+	hqgotlsclient "github.com/hueristiq/hq-lib-tls-go/client"
+	hqgotlsciphers "github.com/hueristiq/hq-lib-tls-go/ciphers"
 )
 ```
 
@@ -142,7 +145,7 @@ if err != nil {
 
 ### Generating a TLS certificate
 
-Use a `CertificateAuthority` to issue a leaf certificate for specific hosts. Each host is routed into the matching Subject Alternative Name field: DNS name, IP address, email address, or URI.
+Use a `CA` to issue a leaf certificate for specific hosts. Each host is routed into the matching Subject Alternative Name field: DNS name, IP address, email address, or URI.
 
 ```go
 package main
@@ -161,7 +164,7 @@ func main() {
 		log.Fatalf("Failed to load CA certificate: %v", err)
 	}
 
-	// Initialize the CertificateAuthority.
+	// Initialize the CA.
 	ca, err := hqgotlsauthority.New(caCert, caKey)
 	if err != nil {
 		log.Fatalf("Failed to initialize CA: %v", err)
@@ -221,7 +224,7 @@ func main() {
 		log.Fatalf("Failed to load CA certificate: %v", err)
 	}
 
-	// Initialize the CertificateAuthority.
+	// Initialize the CA.
 	ca, err := hqgotlsauthority.New(caCert, caKey)
 	if err != nil {
 		log.Fatalf("Failed to initialize CA: %v", err)
@@ -285,7 +288,7 @@ func main() {
 		log.Fatalf("Failed to generate CA certificate: %v", err)
 	}
 
-	// Initialize the certificate cache and the CertificateAuthority.
+	// Initialize the certificate cache and the CA.
 	certificateCache, err := hqgotlsauthoritycache.NewInMemory(1024)
 	if err != nil {
 		log.Fatalf("Failed to initialize certificate cache: %v", err)
@@ -334,7 +337,7 @@ Names are normalized exactly like requested SNI names (port stripped, case folde
 
 ### Connecting to a TLS server
 
-The root package connects to a TLS server in one of two modes and returns one unified result: the negotiated version and cipher, the ALPN protocol, and the certificate chain as raw DER.
+The root package connects through the native engine in `client`, returning one unified result: the negotiated version and cipher, the ALPN protocol, the DER certificate chain, parsed certificate metadata, and the decrypted handshake trace.
 
 ```go
 package main
@@ -345,12 +348,15 @@ import (
 	"time"
 
 	hqgotls "github.com/hueristiq/hq-lib-tls-go"
+	hqgotlsclient "github.com/hueristiq/hq-lib-tls-go/client"
 )
 
 func main() {
 	client, err := hqgotls.New(
-		hqgotls.WithMode(hqgotls.ModeCTLS), // the standard library (the default)
 		hqgotls.WithTimeout(5*time.Second),
+		hqgotls.WithHandshakeLogger(func(event hqgotlsclient.HandshakeEvent) {
+			log.Println(event)
+		}),
 	)
 	if err != nil {
 		log.Fatalf("Failed to create client: %v", err)
@@ -361,21 +367,86 @@ func main() {
 		log.Fatalf("Failed to inspect: %v", err)
 	}
 
-	log.Printf("%s negotiated TLS %#x with cipher %#x", result.Host, result.TLSVersion, result.CipherSuite)
+	log.Printf("%s negotiated %s with %s", result.Host, hqgotlsclient.VersionName(result.TLSVersion), hqgotlsclient.CipherSuiteName(result.CipherSuite))
 	log.Printf("captured %d certificates", len(result.Certificates))
+	log.Printf("handshake messages: %d", len(result.Trace))
 }
 ```
 
-The modes:
+There is no connection mode. `WithCipherSuites`, `WithMinVersion`/`WithMaxVersion`, `WithNextProtos`, `WithServerName`, `WithProxy` (SOCKS5), `WithRootCAs`, `WithInsecureSkipVerify`, `WithAllowExportCipherSuites`, and `WithClientHelloSpec` cover the connection knobs.
 
-- `ModeCTLS`: the standard library's crypto/tls (default).
-- `ModeOpenSSL`: shells out to the OpenSSL binary (`s_client`); needs OpenSSL on PATH or `WithOpenSSLBinary`.
+### Using the native TLS client directly
 
-`WithServerName`, `WithCipherSuites`, `WithMinVersion`/`WithMaxVersion`, `WithNextProtos`, and `WithProxy` (SOCKS5) cover the remaining dialing knobs.
+The `client` subpackage exposes a `crypto/tls`-familiar client when the probe result shape is too high-level. Use `client.NewConn` to wrap an existing `net.Conn`.
+
+```go
+package main
+
+import (
+	"context"
+	"log"
+	"time"
+
+	hqgotlsclient "github.com/hueristiq/hq-lib-tls-go/client"
+)
+
+func main() {
+	connection, err := hqgotlsclient.DialContext(context.Background(), "tcp", "example.com:443", &hqgotlsclient.Config{
+		ServerName: "example.com",
+		MinVersion: hqgotlsclient.VersionTLS12,
+		MaxVersion: hqgotlsclient.VersionTLS13,
+		NextProtos: []string{"h2", "http/1.1"},
+	})
+	if err != nil {
+		log.Fatalf("Failed to dial: %v", err)
+	}
+	defer connection.Close()
+
+	state := connection.ConnectionState()
+	log.Printf("negotiated %s with %s", hqgotlsclient.VersionName(state.Version), hqgotlsclient.CipherSuiteName(state.CipherSuite))
+
+	_ = connection.SetDeadline(time.Now().Add(5 * time.Second))
+
+	for _, event := range connection.HandshakeTrace() {
+		log.Println(event)
+	}
+}
+```
+
+### Legacy versions and export ciphers
+
+Set `MinVersion` to `VersionSSL30`, `VersionTLS10`, or `VersionTLS11` to use the legacy record rules. Export suites are rejected unless `AllowExportCipherSuites` is set.
+
+```go
+connection, err := hqgotlsclient.DialContext(context.Background(), "tcp", "legacy.example:443", &hqgotlsclient.Config{
+	InsecureSkipVerify:      true,
+	MinVersion:              hqgotlsclient.VersionSSL30,
+	MaxVersion:              hqgotlsclient.VersionTLS10,
+	CipherSuites:            []uint16{0x0003, 0x0008, 0x000A}, // RC4-40, DES40, 3DES
+	AllowExportCipherSuites: true,
+})
+```
+
+### Handshake logging
+
+`HandshakeLogger` streams events during the handshake, and `HandshakeTrace` / `HandshakeLog` return the accumulated trace. Because the engine owns the key schedule, every message is logged in plaintext, including TLS 1.3's encrypted handshake flight. The trace's `Raw` field is the handshake message bytes expected by the `fingerprint` package.
+
+```go
+trace := connection.HandshakeTrace()
+
+for _, event := range trace {
+	if event.Name == "ClientHello" {
+		ja3, err := hqgotlsfingerprint.JA3(event.Raw)
+		if err == nil {
+			log.Printf("JA3: %s", hqgotlsfingerprint.Digest(ja3))
+		}
+	}
+}
+```
 
 ### Computing JA3/JA3S fingerprints
 
-The `fingerprint` package turns handshake message bytes into JA3 and JA3S segments and their canonical MD5 digests. Supply a ClientHello or ServerHello captured elsewhere, for example from a packet capture:
+The `fingerprint` package computes JA3 and JA3S from captured handshake bytes and JARM by dialing the target. Supply a ClientHello or ServerHello captured elsewhere, for example from a packet capture:
 
 ```go
 package main
@@ -412,7 +483,7 @@ func main() {
 
 ### Computing the JARM fingerprint
 
-`Client.JARM` sends the ten crafted ClientHello probes defined by the JARM specification over raw TCP and fuzzy-hashes the server's responses. No handshake completes:
+`Client.JARM` sends the ten crafted ClientHello probes defined by the JARM specification over raw TCP and fuzzy-hashes the server's responses. No handshake completes. The implementation lives in `fingerprint.JARM`, which accepts a dialer and timeout:
 
 ```go
 client, err := hqgotls.New(hqgotls.WithTimeout(5*time.Second))
@@ -430,7 +501,7 @@ log.Printf("JARM: %s", jarm)
 
 ### Analyzing certificates
 
-The `certificate` package parses the chain an inspection captured, inspects it, and checks trust and revocation:
+The `certificate` package parses and analyzes the chain an inspection captured. The `certificate/verify` package checks trust and revocation:
 
 ```go
 package main
@@ -441,6 +512,7 @@ import (
 	"time"
 
 	hqgotlscertificate "github.com/hueristiq/hq-lib-tls-go/certificate"
+	hqgotlscertificateverify "github.com/hueristiq/hq-lib-tls-go/certificate/verify"
 	hqgotls "github.com/hueristiq/hq-lib-tls-go"
 )
 
@@ -471,11 +543,11 @@ func main() {
 	log.Printf("self-signed: %v", leaf.SelfSigned())
 	log.Printf("mismatched: %v", leaf.Mismatched("example.com"))
 
-	if untrusted, _ := hqgotlscertificate.Untrusted(result.Certificates, "example.com"); untrusted {
+	if untrusted, _ := hqgotlscertificateverify.Untrusted(result.Certificates, "example.com"); untrusted {
 		log.Println("a client with the system root store would reject this chain")
 	}
 
-	if revoked, _ := hqgotlscertificate.Revoked(result.Certificates); revoked {
+	if revoked, _ := hqgotlscertificateverify.Revoked(result.Certificates); revoked {
 		log.Println("the leaf certificate has been revoked")
 	}
 }
@@ -486,7 +558,7 @@ The embedded cipher classification table is generated from the [ciphersuite.info
 ### Cipher classification
 
 ```go
-for _, suite := range hqgotls.CipherSuitesBySecurity(hqgotls.CipherSecurityInsecure) {
+for _, suite := range hqgotlsciphers.BySecurity(hqgotlsciphers.SecurityInsecure) {
 	fmt.Printf("%#04x\n", suite)
 }
 ```

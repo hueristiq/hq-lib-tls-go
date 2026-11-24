@@ -1,8 +1,8 @@
-package tlsprobe_test
+package tls_test
 
 import (
 	"context"
-	"crypto/tls"
+	stdtls "crypto/tls"
 	"net/http/httptest"
 	"slices"
 	"strings"
@@ -44,7 +44,7 @@ func TestEnumerateVersions(t *testing.T) {
 	}
 
 	// The standard library test server supports at least TLS 1.2.
-	if !slices.Contains(versions, tls.VersionTLS12) && !slices.Contains(versions, tls.VersionTLS13) {
+	if !slices.Contains(versions, stdtls.VersionTLS12) && !slices.Contains(versions, stdtls.VersionTLS13) {
 		t.Errorf("EnumerateVersions() = %v; want TLS 1.2 or 1.3", versions)
 	}
 }

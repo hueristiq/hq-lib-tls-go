@@ -1,41 +1,60 @@
-package tlsprobe
+package tls
 
 import (
 	"context"
-	"crypto/tls"
+	"crypto/x509"
 	"net"
 	"time"
 
 	"golang.org/x/net/proxy"
 
 	hqgoerrors "github.com/hueristiq/hq-lib-errors-go"
+	hqgotlscertificate "github.com/hueristiq/hq-lib-tls-go/certificate"
+	hqgotlsclient "github.com/hueristiq/hq-lib-tls-go/client"
 )
 
 const (
 	// defaultPort is appended to hosts given without a port.
 	defaultPort = "443"
+	// defaultTimeout is the per-connection timeout used when [WithTimeout]
+	// is not given.
+	defaultTimeout = 5 * time.Second
 )
 
 // A Client connects to TLS servers and captures what they offer. It is
-// immutable after construction and safe for concurrent use: [Inspect] and
-// [JARM] open independent connections per call.
-//
-// Fields:
-//   - options (Options): the resolved connection configuration.
-//   - dialer (proxy.ContextDialer): the dialer used for every connection,
-//     wrapping the SOCKS5 proxy when one is configured.
+// immutable after construction and safe for concurrent use: [Inspect],
+// [EnumerateVersions], [EnumerateCipherSuites], and [JARM] open independent
+// connections per call.
 type Client struct {
 	options Options
 	dialer  proxy.ContextDialer
 }
 
+// Options configures a [Client].
+//
+// Fields:
+//   - Config (*client.Config): the connection configuration. Nil uses a default
+//     config that skips certificate verification, matching the probing use
+//     case.
+//   - Timeout (time.Duration): the per-connection timeout.
+//   - Proxy (string): a SOCKS5 proxy address; empty disables proxying.
+type Options struct {
+	Config  *hqgotlsclient.Config
+	Timeout time.Duration
+	Proxy   string
+}
+
+// OptionFunc configures a [Client] created by [New]. A nil OptionFunc is
+// ignored. Options are applied in order, so later options override earlier
+// ones.
+type OptionFunc func(opts *Options)
+
 // New creates a Client. Unset options fall back to their defaults, and
 // invalid values are rejected.
 func New(ofs ...OptionFunc) (client *Client, err error) {
 	opts := &Options{
-		Mode:          defaultMode,
-		Timeout:       defaultTimeout,
-		OpenSSLBinary: defaultOpenSSLBinary,
+		Config:  &hqgotlsclient.Config{InsecureSkipVerify: true},
+		Timeout: defaultTimeout,
 	}
 
 	for _, f := range ofs {
@@ -46,10 +65,18 @@ func New(ofs ...OptionFunc) (client *Client, err error) {
 		f(opts)
 	}
 
-	if err = opts.validate(); err != nil {
-		err = hqgoerrors.Stack(err)
+	if opts.Config == nil {
+		opts.Config = &hqgotlsclient.Config{InsecureSkipVerify: true}
+	}
 
-		return nil, err
+	opts.Config = opts.Config.Clone()
+
+	if err = opts.Config.Validate(); err != nil {
+		return nil, hqgoerrors.Stack(err)
+	}
+
+	if opts.Timeout <= 0 {
+		return nil, hqgoerrors.Errorf("invalid input, timeout must be positive, got %v", opts.Timeout)
 	}
 
 	client = &Client{
@@ -58,257 +85,222 @@ func New(ofs ...OptionFunc) (client *Client, err error) {
 	}
 
 	if opts.Proxy != "" {
-		// proxy.SOCKS5 builds the dialer without I/O and cannot fail for the
-		// tcp network; its concrete type always implements ContextDialer.
 		socks5, _ := proxy.SOCKS5("tcp", opts.Proxy, nil, proxy.Direct)
-
 		client.dialer = socks5.(proxy.ContextDialer)
 	}
 
 	return client, nil
 }
 
-// Inspect connects to host and captures the negotiated parameters and
-// certificates according to the configured mode.
+// Inspect connects to host and captures the negotiated parameters,
+// certificates, and handshake trace.
 //
 // The host may be given with or without a port; without one, 443 is used.
-// Dialing and handshake failures are returned as err. A reached server
-// yields a partial result containing its mode and peer address alongside
-// the error; callers must check err before using negotiated parameters.
+// Dialing and handshake failures are returned as err. A reached server yields
+// a partial result containing its address, any captured state, and the
+// handshake trace; callers must check err before relying on negotiated
+// parameters.
 func (p *Client) Inspect(ctx context.Context, host string) (result Result, err error) {
 	host, port, err := splitHostPort(host)
 	if err != nil {
-		err = hqgoerrors.Stack(err)
-
-		return Result{}, err
+		return Result{}, hqgoerrors.Stack(err)
 	}
 
 	address := net.JoinHostPort(host, port)
 
-	switch p.options.Mode {
-	case ModeCTLS:
-		result, err = p.inspectWithCTLS(ctx, host, address)
-	case ModeOpenSSL:
-		result, err = p.inspectWithOpenSSL(ctx, host, address)
-	default:
-		// Out-of-range modes behave as ctls, the zero value.
-		result, err = p.inspectWithCTLS(ctx, host, address)
+	config := p.options.Config.Clone()
+
+	if config.ServerName == "" && net.ParseIP(host) == nil {
+		config.ServerName = host
+	}
+
+	conn, dialErr := hqgotlsclient.DialWithDialerContext(ctx, p.dialer, "tcp", address, config)
+	if conn != nil {
+		state := conn.ConnectionState()
+
+		result.Host = host
+		result.IP = remoteIP(conn.NetConn())
+		result.TLSVersion = state.Version
+		result.CipherSuite = state.CipherSuite
+		result.ALPN = state.NegotiatedProtocol
+		result.ExportCipher = state.ExportCipher
+		result.Handshake = conn.HandshakeLog()
+		result.Trace = conn.HandshakeTrace()
+
+		for _, certificate := range state.PeerCertificates {
+			result.Certificates = append(result.Certificates, certificate.Raw)
+		}
+
+		if len(result.Certificates) > 0 {
+			if report, reportErr := hqgotlscertificate.Analyze(result.Certificates, host, time.Now()); reportErr == nil {
+				result.CertificateReport = report
+			}
+		}
+
+		_ = conn.Close()
+	}
+
+	if dialErr != nil {
+		if conn != nil {
+			dialErr = hqgoerrors.Join(ErrHandshake, dialErr)
+		}
+
+		return result, hqgoerrors.Wrapf(dialErr, "inspecting %s", host)
 	}
 
 	result.Host = host
 
-	if err != nil {
-		err = hqgoerrors.Wrapf(err, "inspecting %s", host)
-
-		return result, err
-	}
-
 	return result, nil
 }
 
-// splitHostPort splits host into its hostname and port parts, defaulting
-// the port to 443 when absent. IPv6 literals must be bracketed, as in
-// net.JoinHostPort's syntax. A present port is passed through unchanged; the
-// dialer reports an unusable value.
+// splitHostPort splits host into its hostname and port parts, defaulting the
+// port to 443 when absent. IPv6 literals must be bracketed.
 func splitHostPort(host string) (hostname, port string, err error) {
 	if host == "" {
-		err = hqgoerrors.New("invalid input, host is empty")
-
-		return "", "", err
+		return "", "", hqgoerrors.New("invalid input, host is empty")
 	}
 
 	hostname, port, err = net.SplitHostPort(host)
 	if err != nil {
-		// Every split failure (missing port, bare IPv6 literal, too many
-		// colons) yields empty parts; treat the whole input as the hostname
-		// with the default port.
 		hostname, port = host, defaultPort
 	}
 
 	return hostname, port, nil
 }
 
-const (
-	// defaultMode is the connection mode used when [WithMode] is not given.
-	defaultMode = ModeCTLS
-	// defaultTimeout is the per-connection timeout used when [WithTimeout]
-	// is not given.
-	defaultTimeout = 5 * time.Second
-	// defaultOpenSSLBinary is the OpenSSL binary used by [ModeOpenSSL]
-	// when [WithOpenSSLBinary] is not given.
-	defaultOpenSSLBinary = "openssl"
-	// sslVersion30 is the SSL 3.0 version ID. crypto/tls's exported
-	// constant is deprecated, but the client must still recognize the ID
-	// when it is offered as a minimum or maximum version.
-	sslVersion30 = 0x0300
-)
+// remoteIP returns the IP part of the connection's remote address, or an
+// empty string when it cannot be determined.
+func remoteIP(conn net.Conn) (ip string) {
+	if conn == nil {
+		return ""
+	}
 
-// Options defines the configuration of a [Client]. Unset fields fall back
-// to the default* constants and are validated by [New].
-//
-// Fields:
-//   - Mode (Mode): the TLS connection mode.
-//   - Timeout (time.Duration): the per-connection timeout.
-//   - ServerName (string): the SNI name to send; when empty, the inspected
-//     host is used.
-//   - CipherSuites ([]uint16): the cipher suites to offer; when empty, the
-//     dialing library's default set is used.
-//   - MinVersion (uint16): the minimum TLS version to offer; zero keeps the
-//     library default.
-//   - MaxVersion (uint16): the maximum TLS version to offer; zero keeps the
-//     library default.
-//   - NextProtos ([]string): the ALPN protocols to advertise.
-//   - Proxy (string): a SOCKS5 proxy address (host:port); empty disables
-//     proxying.
-//   - OpenSSLBinary (string): the OpenSSL binary used by [ModeOpenSSL].
-type Options struct {
-	Mode          Mode
-	Timeout       time.Duration
-	ServerName    string
-	CipherSuites  []uint16
-	MinVersion    uint16
-	MaxVersion    uint16
-	NextProtos    []string
-	Proxy         string
-	OpenSSLBinary string
+	host, _, err := net.SplitHostPort(conn.RemoteAddr().String())
+	if err == nil {
+		ip = host
+	}
+
+	return ip
 }
 
-// OptionFunc configures a [Client] created by [New]. A nil OptionFunc is ignored.
-// Options are applied in order, so later options override earlier ones. The
-// With* helpers cover common settings, and callers may write custom options
-// because [Options] is exported.
-//
-// Parameters:
-//   - opts (*Options): the options to modify.
-type OptionFunc func(opts *Options)
-
-// WithMode sets the TLS connection mode.
-//
-// The default is [ModeCTLS].
-func WithMode(mode Mode) (fn OptionFunc) {
+// WithConfig sets the connection configuration. The config is cloned.
+func WithConfig(config *hqgotlsclient.Config) (fn OptionFunc) {
 	return func(opts *Options) {
-		opts.Mode = mode
+		if config == nil {
+			return
+		}
+
+		opts.Config = config.Clone()
 	}
 }
 
-// WithTimeout sets the per-connection timeout: dialing, the handshake, and
-// reading the server's first response are all bounded by it.
-//
-// The default is 5 seconds, and the timeout must be positive: [New] returns
-// an error otherwise.
+// WithTimeout sets the per-connection timeout.
 func WithTimeout(timeout time.Duration) (fn OptionFunc) {
 	return func(opts *Options) {
 		opts.Timeout = timeout
 	}
 }
 
-// WithServerName sets the Server Name Indication (SNI) name sent in the
-// ClientHello.
-//
-// When unset, the inspected host is used. This is useful when inspecting by IP
-// while presenting a hostname, or for virtual-host discovery.
+// WithServerName sets the Server Name Indication (SNI) name.
 func WithServerName(serverName string) (fn OptionFunc) {
 	return func(opts *Options) {
-		opts.ServerName = serverName
+		ensureConfig(opts).ServerName = serverName
 	}
 }
 
 // WithCipherSuites sets the cipher suites offered in the ClientHello.
-//
-// When unset, the dialing library's default set is used. Restricting the
-// list enables cipher-suite enumeration: inspect once per suite and read the
-// negotiated [Result.CipherSuite].
 func WithCipherSuites(cipherSuites []uint16) (fn OptionFunc) {
 	return func(opts *Options) {
-		opts.CipherSuites = cipherSuites
+		ensureConfig(opts).CipherSuites = append([]uint16(nil), cipherSuites...)
 	}
 }
 
-// WithMinVersion sets the minimum TLS version offered in the ClientHello.
-//
-// When zero, the dialing library's default applies.
+// WithMinVersion sets the minimum TLS version offered.
 func WithMinVersion(minVersion uint16) (fn OptionFunc) {
 	return func(opts *Options) {
-		opts.MinVersion = minVersion
+		ensureConfig(opts).MinVersion = minVersion
 	}
 }
 
-// WithMaxVersion sets the maximum TLS version offered in the ClientHello.
-//
-// When zero, the dialing library's default applies.
+// WithMaxVersion sets the maximum TLS version offered.
 func WithMaxVersion(maxVersion uint16) (fn OptionFunc) {
 	return func(opts *Options) {
-		opts.MaxVersion = maxVersion
+		ensureConfig(opts).MaxVersion = maxVersion
 	}
 }
 
-// WithNextProtos sets the ALPN protocols advertised in the ClientHello.
-//
-// The default is the dialing library's default set.
+// WithNextProtos sets the ALPN protocols advertised.
 func WithNextProtos(nextProtos ...string) (fn OptionFunc) {
 	return func(opts *Options) {
-		opts.NextProtos = nextProtos
+		ensureConfig(opts).NextProtos = append([]string(nil), nextProtos...)
 	}
 }
 
 // WithProxy sets a SOCKS5 proxy for the connection.
-//
-// The proxy is used by the crypto/tls and JARM connections alike.
 func WithProxy(proxyAddress string) (fn OptionFunc) {
 	return func(opts *Options) {
 		opts.Proxy = proxyAddress
 	}
 }
 
-// WithOpenSSLBinary sets the OpenSSL binary used by [ModeOpenSSL].
-//
-// The default is "openssl", resolved through PATH.
-func WithOpenSSLBinary(path string) (fn OptionFunc) {
+// WithHandshakeLogger sets the streaming handshake message callback.
+func WithHandshakeLogger(logger func(hqgotlsclient.HandshakeEvent)) (fn OptionFunc) {
 	return func(opts *Options) {
-		opts.OpenSSLBinary = path
+		ensureConfig(opts).HandshakeLogger = logger
 	}
 }
 
-// validateVersion reports whether version is a recognized TLS version or
-// zero (library default).
-func validateVersion(version uint16) (valid bool) {
-	switch version {
-	case 0, sslVersion30, tls.VersionTLS10, tls.VersionTLS11, tls.VersionTLS12, tls.VersionTLS13:
-		valid = true
+// WithClientHelloSpec sets an explicit ClientHello specification.
+func WithClientHelloSpec(spec *hqgotlsclient.HelloSpec) (fn OptionFunc) {
+	return func(opts *Options) {
+		ensureConfig(opts).ClientHelloSpec = spec
 	}
-
-	return valid
 }
 
-// validate normalizes the options and reports the first invalid value.
-func (opts *Options) validate() (err error) {
-	if opts.Mode != ModeCTLS && opts.Mode != ModeOpenSSL {
-		return hqgoerrors.Errorf("invalid input, unrecognized TLS connection mode: %d", opts.Mode)
+// WithRootCAs sets the certificate trust store used when verification is
+// enabled.
+func WithRootCAs(roots *x509.CertPool) (fn OptionFunc) {
+	return func(opts *Options) {
+		ensureConfig(opts).RootCAs = roots
+	}
+}
+
+// WithInsecureSkipVerify controls certificate verification. The default for
+// a probing client is true.
+func WithInsecureSkipVerify(skip bool) (fn OptionFunc) {
+	return func(opts *Options) {
+		ensureConfig(opts).InsecureSkipVerify = skip
+	}
+}
+
+// WithAllowExportCipherSuites permits export-grade cipher suites.
+func WithAllowExportCipherSuites(allow bool) (fn OptionFunc) {
+	return func(opts *Options) {
+		ensureConfig(opts).AllowExportCipherSuites = allow
+	}
+}
+
+// ensureConfig returns the options' config, creating one if needed.
+func ensureConfig(opts *Options) (config *hqgotlsclient.Config) {
+	if opts.Config == nil {
+		opts.Config = &hqgotlsclient.Config{InsecureSkipVerify: true}
 	}
 
-	if opts.Timeout <= 0 {
-		err = hqgoerrors.Errorf("invalid input, timeout must be positive, got %v", opts.Timeout)
+	return opts.Config
+}
 
-		return err
+// cloneWith returns a client sharing the dialer but with a copied config
+// updated by update.
+func (p *Client) cloneWith(update func(*hqgotlsclient.Config)) (client *Client) {
+	opts := p.options
+	opts.Config = p.options.Config.Clone()
+
+	update(opts.Config)
+
+	client = &Client{
+		options: opts,
+		dialer:  p.dialer,
 	}
 
-	if !validateVersion(opts.MinVersion) {
-		err = hqgoerrors.Errorf("invalid input, unrecognized minimum TLS version: %#x", opts.MinVersion)
-
-		return err
-	}
-
-	if !validateVersion(opts.MaxVersion) {
-		err = hqgoerrors.Errorf("invalid input, unrecognized maximum TLS version: %#x", opts.MaxVersion)
-
-		return err
-	}
-
-	if opts.MinVersion != 0 && opts.MaxVersion != 0 && opts.MinVersion > opts.MaxVersion {
-		err = hqgoerrors.Errorf("invalid input, minimum TLS version %#x exceeds maximum %#x", opts.MinVersion, opts.MaxVersion)
-
-		return err
-	}
-
-	return nil
+	return client
 }

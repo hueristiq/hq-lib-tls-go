@@ -1,8 +1,8 @@
-package tlsprobe_test
+package tls_test
 
 import (
 	"context"
-	"crypto/tls"
+	stdtls "crypto/tls"
 	"testing"
 
 	hqgotls "github.com/hueristiq/hq-lib-tls-go"
@@ -49,11 +49,19 @@ func TestInspectLocalServer(t *testing.T) {
 		t.Fatalf("Inspect() error = %v", err)
 	}
 
-	if result.TLSVersion != tls.VersionTLS12 && result.TLSVersion != tls.VersionTLS13 {
+	if result.TLSVersion != stdtls.VersionTLS12 && result.TLSVersion != stdtls.VersionTLS13 {
 		t.Errorf("Inspect() TLSVersion = %#04x; want TLS 1.2 or 1.3", result.TLSVersion)
 	}
 
 	if len(result.Certificates) == 0 {
 		t.Error("Inspect() returned no peer certificates")
+	}
+
+	if result.CertificateReport == nil {
+		t.Error("Inspect() returned no certificate report")
+	}
+
+	if result.Handshake == nil || len(result.Trace) == 0 {
+		t.Error("Inspect() returned no handshake trace")
 	}
 }

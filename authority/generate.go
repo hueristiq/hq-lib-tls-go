@@ -380,7 +380,7 @@ func defaultOperations() (ops *operations) {
 
 // operations returns the operation set the authority was configured with,
 // falling back to [defaultOperations].
-func (ca *CertificateAuthority) operations() (ops *operations) {
+func (ca *CA) operations() (ops *operations) {
 	if ca != nil && ca.ops != nil {
 		return ca.ops
 	}

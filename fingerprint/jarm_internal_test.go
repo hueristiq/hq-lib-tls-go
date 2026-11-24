@@ -1,11 +1,13 @@
-package tlsprobe
+package fingerprint
 
 import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"io"
 	"net"
+	"net/http/httptest"
 	"strings"
 	"sync"
 	"testing"
@@ -13,15 +15,16 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/net/proxy"
 )
 
 func syntheticServerHello(t *testing.T, cipher uint16, extensions [][]byte) []byte {
 	t.Helper()
 
 	body := make([]byte, 0, 64)
-	body = appendUint16(body, 0x0303)
+	body = jarmAppendUint16(body, 0x0303)
 	body = append(append(body, make([]byte, 32)...), 0x00) // random + empty session ID
-	body = appendUint16(body, cipher)
+	body = jarmAppendUint16(body, cipher)
 	body = append(body, 0x00) // compression: null
 
 	var extBlock []byte
@@ -32,21 +35,21 @@ func syntheticServerHello(t *testing.T, cipher uint16, extensions [][]byte) []by
 
 	var err error
 
-	body, err = appendLength16(body, len(extBlock))
+	body, err = jarmAppendLength16(body, len(extBlock))
 	require.NoError(t, err)
 
 	body = append(body, extBlock...)
 
 	handshake := make([]byte, 0, 4+len(body))
 	handshake = append(handshake, 0x02)
-	handshake, err = appendLength24(handshake, len(body))
+	handshake, err = jarmAppendLength24(handshake, len(body))
 	require.NoError(t, err)
 
 	handshake = append(handshake, body...)
 
 	record := make([]byte, 0, 5+len(handshake))
 	record = append(record, 0x16, 0x03, 0x03)
-	record, err = appendLength16(record, len(handshake))
+	record, err = jarmAppendLength16(record, len(handshake))
 	require.NoError(t, err)
 
 	record = append(record, handshake...)
@@ -58,11 +61,11 @@ func extensionBytes(t *testing.T, extensionType uint16, data []byte) []byte {
 	t.Helper()
 
 	extension := make([]byte, 0, 4+len(data))
-	extension = appendUint16(extension, extensionType)
+	extension = jarmAppendUint16(extension, extensionType)
 
 	var err error
 
-	extension, err = appendLength16(extension, len(data))
+	extension, err = jarmAppendLength16(extension, len(data))
 	require.NoError(t, err)
 
 	extension = append(extension, data...)
@@ -220,10 +223,7 @@ func TestJARMMung(t *testing.T) {
 func TestJARMInvalidHost(t *testing.T) {
 	t.Parallel()
 
-	client, err := New()
-	require.NoError(t, err)
-
-	_, err = client.JARM(context.Background(), "")
+	_, err := JARM(context.Background(), proxy.Direct, "", time.Second)
 	require.ErrorContains(t, err, "host is empty")
 }
 
@@ -233,10 +233,7 @@ func TestJARMTimeout(t *testing.T) {
 	address, stop := startHangingServer(t)
 	defer stop()
 
-	client, err := New(WithTimeout(100 * time.Millisecond))
-	require.NoError(t, err)
-
-	jarm, err := client.JARM(context.Background(), address)
+	jarm, err := JARM(context.Background(), proxy.Direct, address, 100*time.Millisecond)
 	require.NoError(t, err)
 	assert.Equal(t, jarmEmptyHash, jarm, "a timeout yields the all-zero hash")
 }
@@ -298,9 +295,7 @@ func TestSendJARMProbeFailurePaths(t *testing.T) {
 				dialer = &fakeDialer{conn: test.conn}
 			}
 
-			client := newTestClient(t, dialer)
-
-			hello, err := client.sendJARMProbe(ctx, "example.com", "example.com:443", &parameters)
+			hello, err := sendJARMProbe(ctx, dialer, 5*time.Second, "example.com", "example.com:443", &parameters)
 
 			if test.err {
 				require.Error(t, err)
@@ -424,13 +419,13 @@ func TestRandomBytesReturnsEntropyFailure(t *testing.T) {
 func TestAppendLengthRejectsOverflow(t *testing.T) {
 	t.Parallel()
 
-	_, err := appendLength8(nil, 0x100)
+	_, err := jarmAppendLength8(nil, 0x100)
 	require.Error(t, err)
 
-	_, err = appendLength16(nil, 0x10000)
+	_, err = jarmAppendLength16(nil, 0x10000)
 	require.Error(t, err)
 
-	_, err = appendLength24(nil, 0x1000000)
+	_, err = jarmAppendLength24(nil, 0x1000000)
 	require.Error(t, err)
 }
 
@@ -441,11 +436,7 @@ func TestJARM(t *testing.T) {
 
 	defer stop()
 
-	client, err := New(WithTimeout(5 * time.Second))
-
-	require.NoError(t, err)
-
-	jarm, err := client.JARM(context.Background(), address)
+	jarm, err := JARM(context.Background(), proxy.Direct, address, 5*time.Second)
 
 	require.NoError(t, err)
 	assert.Len(t, jarm, 62)
@@ -455,11 +446,7 @@ func TestJARM(t *testing.T) {
 func TestJARMUnreachableHost(t *testing.T) {
 	t.Parallel()
 
-	client, err := New(WithTimeout(time.Second))
-
-	require.NoError(t, err)
-
-	jarm, err := client.JARM(context.Background(), "127.0.0.1:1")
+	jarm, err := JARM(context.Background(), proxy.Direct, "127.0.0.1:1", time.Second)
 
 	require.NoError(t, err)
 	assert.Equal(t, jarmEmptyHash, jarm)
@@ -508,4 +495,85 @@ func startHangingServer(t *testing.T) (address string, stop func()) {
 	}
 
 	return listener.Addr().String(), stop
+}
+
+type fakeAddr string
+
+type fakeConn struct {
+	readData    []byte
+	readErr     error
+	writeErr    error
+	deadlineErr error
+}
+
+type fakeDialer struct {
+	conn net.Conn
+	err  error
+}
+
+type timeoutError struct{}
+
+type failingReader struct{}
+
+func (a fakeAddr) Network() (network string) { return "tcp" }
+
+func (a fakeAddr) String() (address string) { return string(a) }
+
+func (c *fakeConn) Read(b []byte) (n int, err error) {
+	if c.readErr != nil {
+		return 0, c.readErr
+	}
+
+	if len(c.readData) == 0 {
+		return 0, io.EOF
+	}
+
+	n = copy(b, c.readData)
+	c.readData = c.readData[n:]
+
+	return n, nil
+}
+
+func (c *fakeConn) Write(b []byte) (n int, err error) {
+	if c.writeErr != nil {
+		return 0, c.writeErr
+	}
+
+	return len(b), nil
+}
+
+func (c *fakeConn) Close() (err error) { return nil }
+
+func (c *fakeConn) LocalAddr() (address net.Addr) { return fakeAddr("127.0.0.1:1") }
+
+func (c *fakeConn) RemoteAddr() (address net.Addr) { return fakeAddr("127.0.0.1:443") }
+
+func (c *fakeConn) SetDeadline(time.Time) (err error) { return c.deadlineErr }
+
+func (c *fakeConn) SetReadDeadline(time.Time) (err error) { return c.deadlineErr }
+
+func (c *fakeConn) SetWriteDeadline(time.Time) (err error) { return c.deadlineErr }
+
+func (d *fakeDialer) DialContext(context.Context, string, string) (conn net.Conn, err error) {
+	if d.err != nil {
+		return nil, d.err
+	}
+
+	return d.conn, nil
+}
+
+func (timeoutError) Error() (message string) { return "i/o timeout" }
+
+func (timeoutError) Timeout() (timedOut bool) { return true }
+
+func (timeoutError) Temporary() (temporary bool) { return true }
+
+func (failingReader) Read([]byte) (n int, err error) { return 0, errors.New("entropy source failed") }
+
+func startTLSServer(t *testing.T) (address string, stop func()) {
+	t.Helper()
+
+	server := httptest.NewTLSServer(nil)
+
+	return strings.TrimPrefix(server.URL, "https://"), server.Close
 }

@@ -8,9 +8,10 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
+
+	hqgoerrors "github.com/hueristiq/hq-lib-errors-go"
 )
 
 // LoadCertificatePrivateKeyFromFiles loads a certificate and private key from the specified PEM-encoded files.
@@ -19,55 +20,36 @@ import (
 // it is a valid X.509 certificate, and the private key is verified to implement the crypto.Signer interface
 // and to be one of the supported types (RSA, ECDSA, or Ed25519). The function performs input validation and
 // provides detailed error messages for debugging purposes.
-//
-// Parameters:
-//   - certificateFilePath (string): the file path to the PEM-encoded certificate.
-//   - certificatePrivateKeyFilePath (string): the file path to the PEM-encoded private key.
-//
-// Returns:
-//   - certificate (*x509.Certificate): a pointer to the loaded X.509 certificate.
-//   - privateKey (crypto.Signer): the loaded private key, implementing the crypto.Signer interface.
-//   - err (error): an error if loading, parsing, or type assertion fails; otherwise, nil.
 func LoadCertificatePrivateKeyFromFiles(certificateFilePath, certificatePrivateKeyFilePath string) (certificate *x509.Certificate, privateKey crypto.Signer, err error) {
 	return loadCertificatePrivateKeyFromFiles(defaultOperations(), certificateFilePath, certificatePrivateKeyFilePath)
 }
 
 // loadCertificatePrivateKeyFromFiles loads and validates a certificate and
 // private key pair using the given operations.
-//
-// Parameters:
-//   - ops (*operations): the cryptographic operations to use.
-//   - certificateFilePath (string): the file path to the PEM-encoded certificate.
-//   - certificatePrivateKeyFilePath (string): the file path to the PEM-encoded private key.
-//
-// Returns:
-//   - certificate (*x509.Certificate): a pointer to the loaded X.509 certificate.
-//   - privateKey (crypto.Signer): the loaded private key, implementing the crypto.Signer interface.
-//   - err (error): an error if loading, parsing, or type assertion fails; otherwise, nil.
 func loadCertificatePrivateKeyFromFiles(ops *operations, certificateFilePath, certificatePrivateKeyFilePath string) (certificate *x509.Certificate, privateKey crypto.Signer, err error) {
 	if certificateFilePath == "" || certificatePrivateKeyFilePath == "" {
-		err = errors.New("authority.LoadCertificatePrivateKeyFromFiles: invalid input, certificate file path or private key file path is empty")
+		err = hqgoerrors.New("invalid input, certificate file path or private key file path is empty")
 
 		return nil, nil, err
 	}
 
 	keyPair, err := ops.loadKeyPair(certificateFilePath, certificatePrivateKeyFilePath)
 	if err != nil {
-		err = fmt.Errorf("authority.LoadCertificatePrivateKeyFromFiles: loading certificate and private key from files %q and %q: %w", certificateFilePath, certificatePrivateKeyFilePath, err)
+		err = hqgoerrors.Wrapf(err, "loading certificate and private key from files %q and %q", certificateFilePath, certificatePrivateKeyFilePath)
 
 		return nil, nil, err
 	}
 
 	certificate, err = ops.parseCertificate(keyPair.Certificate[0])
 	if err != nil {
-		err = fmt.Errorf("authority.LoadCertificatePrivateKeyFromFiles: parsing X.509 certificate from file %q: %w", certificateFilePath, err)
+		err = hqgoerrors.Wrapf(err, "parsing X.509 certificate from file %q", certificateFilePath)
 
 		return nil, nil, err
 	}
 
 	signer, ok := keyPair.PrivateKey.(crypto.Signer)
 	if !ok {
-		err = fmt.Errorf("authority.LoadCertificatePrivateKeyFromFiles: private key from file %q does not implement crypto.Signer: got type %T", certificatePrivateKeyFilePath, keyPair.PrivateKey)
+		err = hqgoerrors.Errorf("private key from file %q does not implement crypto.Signer: got type %T", certificatePrivateKeyFilePath, keyPair.PrivateKey)
 
 		return nil, nil, err
 	}
@@ -77,7 +59,7 @@ func loadCertificatePrivateKeyFromFiles(ops *operations, certificateFilePath, ce
 	switch privateKey.(type) {
 	case *rsa.PrivateKey, *ecdsa.PrivateKey, ed25519.PrivateKey:
 	default:
-		err = fmt.Errorf("authority.LoadCertificatePrivateKeyFromFiles: unsupported private key type in file %q: got %T, expected RSA, ECDSA, or Ed25519", certificatePrivateKeyFilePath, privateKey)
+		err = hqgoerrors.Errorf("unsupported private key type in file %q: got %T, expected RSA, ECDSA, or Ed25519", certificatePrivateKeyFilePath, privateKey)
 
 		return nil, nil, err
 	}
@@ -94,51 +76,41 @@ func loadCertificatePrivateKeyFromFiles(ops *operations, certificateFilePath, ce
 // file is written with permissions 0600 and the private key file with permissions 0400 (read-only) to
 // protect sensitive data. The private key must implement the crypto.Signer interface and be one of the
 // supported types (RSA, ECDSA, or Ed25519).
-//
-// Parameters:
-//   - certificate (*x509.Certificate): a pointer to the X.509 certificate to save.
-//   - privateKey (crypto.Signer): the private key to save, implementing the crypto.Signer interface.
-//   - certificateFilePath (string): the file path where the certificate will be saved in PEM format.
-//   - privateKeyFilePath (string): the file path where the private key will be saved in PEM format.
-//
-// Returns:
-//   - err (error): an error if the certificate and private key do not match, or directory creation,
-//     PEM conversion, or file writing fails; otherwise, nil.
 func SaveCertificatePrivateKeyToFiles(certificate *x509.Certificate, privateKey crypto.Signer, certificateFilePath, privateKeyFilePath string) (err error) {
 	if certificate == nil {
-		err = errors.New("authority.SaveCertificatePrivateKeyToFiles: invalid input, certificate is nil")
+		err = hqgoerrors.New("invalid input, certificate is nil")
 
 		return err
 	}
 
 	if privateKey == nil {
-		err = errors.New("authority.SaveCertificatePrivateKeyToFiles: invalid input, private key is nil")
+		err = hqgoerrors.New("invalid input, private key is nil")
 
 		return err
 	}
 
 	if certificateFilePath == "" || privateKeyFilePath == "" {
-		err = errors.New("authority.SaveCertificatePrivateKeyToFiles: invalid input, certificate file path or private key file path is empty")
+		err = hqgoerrors.New("invalid input, certificate file path or private key file path is empty")
 
 		return err
 	}
 
 	certificatePublicKey, err := x509.MarshalPKIXPublicKey(certificate.PublicKey)
 	if err != nil {
-		err = fmt.Errorf("authority.SaveCertificatePrivateKeyToFiles: invalid input, certificate public key (type %T) cannot be marshaled: %w", certificate.PublicKey, err)
+		err = hqgoerrors.Wrapf(err, "invalid input, certificate public key (type %T) cannot be marshaled", certificate.PublicKey)
 
 		return err
 	}
 
 	privateKeyPublicKey, err := x509.MarshalPKIXPublicKey(privateKey.Public())
 	if err != nil {
-		err = fmt.Errorf("authority.SaveCertificatePrivateKeyToFiles: invalid input, private key's public key (type %T) cannot be marshaled: %w", privateKey.Public(), err)
+		err = hqgoerrors.Wrapf(err, "invalid input, private key's public key (type %T) cannot be marshaled", privateKey.Public())
 
 		return err
 	}
 
 	if !bytes.Equal(certificatePublicKey, privateKeyPublicKey) {
-		err = errors.New("authority.SaveCertificatePrivateKeyToFiles: invalid input, private key does not match the certificate's public key")
+		err = hqgoerrors.New("invalid input, private key does not match the certificate's public key")
 
 		return err
 	}
@@ -146,7 +118,7 @@ func SaveCertificatePrivateKeyToFiles(certificate *x509.Certificate, privateKey 
 	certificateFilePathDirectory := filepath.Dir(certificateFilePath)
 
 	if err = mkdir(certificateFilePathDirectory); err != nil {
-		err = fmt.Errorf("authority.SaveCertificatePrivateKeyToFiles: creating directory %q for certificate: %w", certificateFilePathDirectory, err)
+		err = hqgoerrors.Wrapf(err, "creating directory %q for certificate", certificateFilePathDirectory)
 
 		return err
 	}
@@ -154,33 +126,33 @@ func SaveCertificatePrivateKeyToFiles(certificate *x509.Certificate, privateKey 
 	privateKeyFilePathDirectory := filepath.Dir(privateKeyFilePath)
 
 	if err = mkdir(privateKeyFilePathDirectory); err != nil {
-		err = fmt.Errorf("authority.SaveCertificatePrivateKeyToFiles: creating directory %q for private key: %w", privateKeyFilePathDirectory, err)
+		err = hqgoerrors.Wrapf(err, "creating directory %q for private key", privateKeyFilePathDirectory)
 
 		return err
 	}
 
 	certificateBytes, err := CertificateToPEM(certificate)
 	if err != nil {
-		err = fmt.Errorf("authority.SaveCertificatePrivateKeyToFiles: converting certificate to PEM format: %w", err)
+		err = hqgoerrors.Wrap(err, "converting certificate to PEM format")
 
 		return err
 	}
 
 	keyBytes, err := PrivateKeyToPEM(privateKey)
 	if err != nil {
-		err = fmt.Errorf("authority.SaveCertificatePrivateKeyToFiles: converting private key to PEM format (type %T): %w", privateKey, err)
+		err = hqgoerrors.Wrapf(err, "converting private key to PEM format (type %T)", privateKey)
 
 		return err
 	}
 
 	if err = writeToFile(certificateBytes, certificateFilePath, 0o600); err != nil {
-		err = fmt.Errorf("authority.SaveCertificatePrivateKeyToFiles: writing certificate to file %q: %w", certificateFilePath, err)
+		err = hqgoerrors.Wrapf(err, "writing certificate to file %q", certificateFilePath)
 
 		return err
 	}
 
 	if err = writeToFile(keyBytes, privateKeyFilePath, 0o400); err != nil {
-		err = fmt.Errorf("authority.SaveCertificatePrivateKeyToFiles: writing private key to file %q: %w", privateKeyFilePath, err)
+		err = hqgoerrors.Wrapf(err, "writing private key to file %q", privateKeyFilePath)
 
 		return err
 	}
@@ -192,21 +164,15 @@ func SaveCertificatePrivateKeyToFiles(certificate *x509.Certificate, privateKey 
 //
 // The directory is created with permissions 0755 (rwxr-xr-x), suitable for directories containing
 // certificate files. If the directory already exists, no action is taken.
-//
-// Parameters:
-//   - path (string): the file system path for the directory to create.
-//
-// Returns:
-//   - err (error): an error if directory creation fails; otherwise, nil.
 func mkdir(path string) (err error) {
 	if path == "" {
-		err = errors.New("authority.mkdir: invalid input, directory path is empty")
+		err = hqgoerrors.New("invalid input, directory path is empty")
 
 		return err
 	}
 
 	if err = os.MkdirAll(path, 0o755); err != nil { //nolint:gosec // G301: certificate directories are deliberately world-traversable (0755); the files within are written 0600
-		err = fmt.Errorf("authority.mkdir: creating directory %q with permissions 0755: %w", path, err)
+		err = hqgoerrors.Wrapf(err, "creating directory %q with permissions 0755", path)
 
 		return err
 	}
@@ -226,38 +192,21 @@ func mkdir(path string) (err error) {
 // modify the link's target instead of the named path.
 //
 // On Windows, permission bits are not honored beyond the read-only attribute.
-//
-// Parameters:
-//   - content ([]byte): a byte slice containing the data to write.
-//   - path (string): the file path where the content will be written.
-//   - perm (os.FileMode): the permissions the file must have after writing.
-//
-// Returns:
-//   - err (error): an error if the path is a symlink or file writing or permission setting fails; otherwise, nil.
 func writeToFile(content []byte, path string, perm os.FileMode) (err error) {
 	return writeToFileWith(defaultOperations(), content, path, perm)
 }
 
 // writeToFileWith writes content to path with the given permissions using
 // the supplied filesystem operations.
-//
-// Parameters:
-//   - ops (*operations): the filesystem operations to use.
-//   - content ([]byte): a byte slice containing the data to write.
-//   - path (string): the file path where the content will be written.
-//   - perm (os.FileMode): the permissions the file must have after writing.
-//
-// Returns:
-//   - err (error): an error if the path is a symlink or file writing or permission setting fails; otherwise, nil.
 func writeToFileWith(ops *operations, content []byte, path string, perm os.FileMode) (err error) {
 	if path == "" {
-		err = errors.New("authority.writeToFile: invalid input, file path is empty")
+		err = hqgoerrors.New("invalid input, file path is empty")
 
 		return err
 	}
 
 	if len(content) == 0 {
-		err = fmt.Errorf("authority.writeToFile: invalid input, content to write to file %q is empty", path)
+		err = hqgoerrors.Errorf("invalid input, content to write to file %q is empty", path)
 
 		return err
 	}
@@ -267,12 +216,12 @@ func writeToFileWith(ops *operations, content []byte, path string, perm os.FileM
 	// front.
 	if info, statErr := ops.lstat(path); statErr == nil {
 		if info.Mode()&os.ModeSymlink != 0 {
-			err = fmt.Errorf("authority.writeToFile: refusing to write through symlink %q", path)
+			err = hqgoerrors.Errorf("refusing to write through symlink %q", path)
 
 			return err
 		}
 	} else if !errors.Is(statErr, os.ErrNotExist) {
-		err = fmt.Errorf("authority.writeToFile: inspecting file %q before writing: %w", path, statErr)
+		err = hqgoerrors.Wrapf(statErr, "inspecting file %q before writing", path)
 
 		return err
 	}
@@ -280,13 +229,13 @@ func writeToFileWith(ops *operations, content []byte, path string, perm os.FileM
 	// A previous call may have left the file read-only (for example a private
 	// key written 0400); make it owner-writable so the write below succeeds.
 	if err = ops.chmodBeforeWrite(path, 0o600); err != nil && !errors.Is(err, os.ErrNotExist) {
-		err = fmt.Errorf("authority.writeToFile: making pre-existing file %q writable: %w", path, err)
+		err = hqgoerrors.Wrapf(err, "making pre-existing file %q writable", path)
 
 		return err
 	}
 
 	if err = os.WriteFile(path, content, perm); err != nil {
-		err = fmt.Errorf("authority.writeToFile: writing content to file %q with permissions %04o: %w", path, perm, err)
+		err = hqgoerrors.Wrapf(err, "writing content to file %q with permissions %04o", path, perm)
 
 		return err
 	}
@@ -294,7 +243,7 @@ func writeToFileWith(ops *operations, content []byte, path string, perm os.FileM
 	// os.WriteFile applies the permissions only when creating the file, so
 	// re-apply them to tighten a pre-existing file with looser permissions.
 	if err = ops.chmodAfterWrite(path, perm); err != nil {
-		err = fmt.Errorf("authority.writeToFile: setting permissions %04o on file %q: %w", perm, path, err)
+		err = hqgoerrors.Wrapf(err, "setting permissions %04o on file %q", perm, path)
 
 		return err
 	}

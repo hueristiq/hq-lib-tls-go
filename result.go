@@ -1,4 +1,4 @@
-package tls
+package tlsprobe
 
 // Result is the outcome of inspecting one host, filled identically by every
 // connection mode. Certificates and handshake messages cross the package

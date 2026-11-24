@@ -1,4 +1,4 @@
-package tls
+package tlsprobe
 
 import (
 	"context"
@@ -13,14 +13,6 @@ import (
 //
 // A version the server rejects is skipped rather than reported as an error;
 // only a canceled context stops the enumeration.
-//
-// Parameters:
-//   - ctx (context.Context): the context bounding the probes.
-//   - host (string): the target, as accepted by [Client.Inspect].
-//
-// Returns:
-//   - versions ([]uint16): the accepted version IDs, ascending.
-//   - err (error): non-nil only when ctx is canceled.
 func (p *Client) EnumerateVersions(ctx context.Context, host string) (versions []uint16, err error) {
 	candidates := []uint16{
 		sslVersion30,
@@ -58,15 +50,6 @@ func (p *Client) EnumerateVersions(ctx context.Context, host string) (versions [
 //
 // A suite the server rejects is skipped rather than reported as an error; only
 // a canceled context stops the enumeration.
-//
-// Parameters:
-//   - ctx (context.Context): the context bounding the probes.
-//   - host (string): the target, as accepted by [Client.Inspect].
-//   - concurrency (int): the maximum number of simultaneous probes.
-//
-// Returns:
-//   - suites ([]uint16): the accepted cipher suite IDs, ascending.
-//   - err (error): non-nil only when ctx is canceled.
 func (p *Client) EnumerateCipherSuites(ctx context.Context, host string, concurrency int) (suites []uint16, err error) {
 	candidates := CipherSuitesBySecurity(CipherSecurityInsecure)
 
@@ -140,12 +123,6 @@ feed:
 
 // cloneWith returns a client sharing the original dialer but with a copy of
 // the options updated by update.
-//
-// Parameters:
-//   - update (func(*Options)): the option mutation.
-//
-// Returns:
-//   - client (*Client): the derived client.
 func (p *Client) cloneWith(update func(*Options)) (client *Client) {
 	opts := p.options
 

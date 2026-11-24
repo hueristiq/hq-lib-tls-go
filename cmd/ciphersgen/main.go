@@ -20,6 +20,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	hqgoerrors "github.com/hueristiq/hq-lib-errors-go"
 )
 
 // datasetURL is the ciphersuite.info API endpoint.
@@ -114,9 +116,6 @@ func main() {
 
 // generateSection fetches the dataset and renders the generated comment and
 // cipher-classification map.
-//
-// Returns:
-//   - section ([]byte): the generated file section, marker comments excluded.
 func generateSection() (section []byte) {
 	client := &http.Client{
 		Timeout: 30 * time.Second,
@@ -199,13 +198,6 @@ func generateSection() (section []byte) {
 // replaceSection replaces the text between the generated-section markers in
 // path with section, preserving the rest of the file. The file is replaced
 // atomically through a temporary sibling.
-//
-// Parameters:
-//   - path (string): the target Go file.
-//   - section ([]byte): the new generated content.
-//
-// Returns:
-//   - err (error): non-nil when a marker is missing or the write fails.
 func replaceSection(path string, section []byte) (err error) {
 	data, err := os.ReadFile(path) //nolint:gosec // the output path is supplied explicitly by the maintainer.
 	if err != nil {
@@ -214,14 +206,14 @@ func replaceSection(path string, section []byte) (err error) {
 
 	begin := bytes.Index(data, []byte(sectionBegin))
 	if begin < 0 {
-		return fmt.Errorf("begin marker %q not found", sectionBegin)
+		return hqgoerrors.Errorf("begin marker %q not found", sectionBegin)
 	}
 
 	contentStart := begin + len(sectionBegin)
 
 	endOffset := bytes.Index(data[contentStart:], []byte(sectionEnd))
 	if endOffset < 0 {
-		return fmt.Errorf("end marker %q not found", sectionEnd)
+		return hqgoerrors.Errorf("end marker %q not found", sectionEnd)
 	}
 
 	contentEnd := contentStart + endOffset
@@ -272,10 +264,6 @@ func replaceSection(path string, section []byte) (err error) {
 }
 
 // fatalf prints the error to stderr and exits non-zero.
-//
-// Parameters:
-//   - format (string): a fmt-style format string; the message is prefixed with "gen: ".
-//   - args (...any): values for the format string's verbs.
 func fatalf(format string, args ...any) {
 	fmt.Fprintf(os.Stderr, "gen: "+format+"\n", args...)
 

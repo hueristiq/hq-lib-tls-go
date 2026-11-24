@@ -1,4 +1,4 @@
-package tls
+package tlsprobe
 
 import (
 	"bytes"
@@ -6,9 +6,10 @@ import (
 	"crypto/tls"
 	"encoding/pem"
 	"errors"
-	"fmt"
 	"os/exec"
 	"strings"
+
+	hqgoerrors "github.com/hueristiq/hq-lib-errors-go"
 )
 
 // versionNames maps OpenSSL's session protocol names to TLS version IDs.
@@ -25,9 +26,6 @@ var versionNames = map[string]uint16{
 // names (TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256) are normalized into the
 // OpenSSL spellings s_client prints (ECDHE-ECDSA-AES128-GCM-SHA256),
 // including the CBC-less variant OpenSSL uses for CBC suites.
-//
-// Returns:
-//   - ids (map[string]uint16): the OpenSSL spelling of every known suite, mapped to its ID.
 func cipherSuiteIDs() (ids map[string]uint16) {
 	suites := append(tls.CipherSuites(), tls.InsecureCipherSuites()...)
 
@@ -44,12 +42,6 @@ func cipherSuiteIDs() (ids map[string]uint16) {
 
 // opensslNames renders a standard library cipher suite name in the
 // spellings OpenSSL's s_client prints.
-//
-// Parameters:
-//   - name (string): the IANA-style suite name.
-//
-// Returns:
-//   - names ([]string): the OpenSSL spellings.
 func opensslNames(name string) (names []string) {
 	name = strings.TrimPrefix(name, "TLS_")
 	name = strings.Replace(name, "_WITH_", "-", 1)
@@ -77,15 +69,6 @@ func opensslNames(name string) (names []string) {
 // inspectWithOpenSSL inspects host by shelling out to the OpenSSL binary
 // (s_client) and parsing its session output. The OpenSSL binary must be
 // installed and either on PATH or pointed to by [WithOpenSSLBinary].
-//
-// Parameters:
-//   - ctx (context.Context): the context bounding the operation.
-//   - host (string): the hostname or IP (without port).
-//   - address (string): the dial address (host:port).
-//
-// Returns:
-//   - result (Result): the inspection outcome.
-//   - err (error): non-nil when OpenSSL is missing or produces no parseable output.
 func (p *Client) inspectWithOpenSSL(ctx context.Context, host, address string) (result Result, err error) {
 	result.Mode = ModeOpenSSL
 
@@ -117,18 +100,18 @@ func (p *Client) inspectWithOpenSSL(ctx context.Context, host, address string) (
 	if err = command.Run(); err != nil {
 		var exitErr *exec.ExitError
 		if !errors.As(err, &exitErr) {
-			return result, fmt.Errorf("inspectWithOpenSSL: run %s: %w", p.options.OpenSSLBinary, err)
+			return result, hqgoerrors.Join(ErrOpenSSLUnavailable, hqgoerrors.Wrapf(err, "run %s", p.options.OpenSSLBinary))
 		}
 	}
 
 	if err = ctx.Err(); err != nil {
-		return result, fmt.Errorf("inspectWithOpenSSL: %w", err)
+		return result, hqgoerrors.Wrap(err, "inspectWithOpenSSL")
 	}
 
 	session := output.String()
 
 	if err = parseOpenSSLOutput(session, address, &result); err != nil {
-		err = fmt.Errorf("inspectWithOpenSSL: %w", err)
+		err = hqgoerrors.Wrap(err, "inspectWithOpenSSL")
 
 		return result, err
 	}
@@ -140,17 +123,9 @@ func (p *Client) inspectWithOpenSSL(ctx context.Context, host, address string) (
 
 // parseOpenSSLOutput extracts the negotiated protocol, cipher, ALPN, and
 // certificate chain from an s_client session dump.
-//
-// Parameters:
-//   - output (string): the s_client output.
-//   - address (string): the dial address, for error messages.
-//   - result (*Result): the result to fill.
-//
-// Returns:
-//   - err (error): non-nil when the output lacks a protocol line.
 func parseOpenSSLOutput(output, address string, result *Result) (err error) {
 	if !strings.Contains(output, "Protocol:") && !strings.Contains(output, "Protocol ") {
-		err = fmt.Errorf("client.parseOpenSSLOutput: no session in OpenSSL output for %s (is the OpenSSL binary available?)", address)
+		err = hqgoerrors.Wrapf(ErrOpenSSLUnavailable, "no session in OpenSSL output for %s", address)
 
 		return err
 	}
@@ -212,12 +187,6 @@ func parseOpenSSLOutput(output, address string, result *Result) (err error) {
 // remoteIPFromOpenSSL extracts the connected IP from an s_client session
 // dump ("Connecting to ..." line). It is best-effort: the line carries the
 // target address, not necessarily the IP the connection used.
-//
-// Parameters:
-//   - output (string): the s_client output.
-//
-// Returns:
-//   - ip (string): the IP, or an empty string.
 func remoteIPFromOpenSSL(output string) (ip string) {
 	for _, line := range strings.Split(output, "\n") {
 		if !strings.Contains(line, "Connecting to ") {

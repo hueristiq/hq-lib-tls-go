@@ -70,7 +70,7 @@ func TestInMemorySetRejectsNilEntry(t *testing.T) {
 	require.NoError(t, err)
 
 	err = c.Set("example.com", nil)
-	require.EqualError(t, err, "cache.InMemory.Set: entry is nil")
+	require.EqualError(t, err, "entry is nil")
 }
 
 func TestEvictionHeapPushIgnoresWrongType(t *testing.T) {

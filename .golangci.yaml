@@ -115,6 +115,8 @@ linters:
             min-occurrences: 3
         importas:
             alias:
+                - pkg: github.com/hueristiq/hq-lib-errors-go
+                  alias: hqgoerrors
                 - pkg: github.com/hueristiq/hq-lib-tls-go
                   alias: hqgotls
                 - pkg: github.com/hueristiq/hq-lib-tls-go/authority

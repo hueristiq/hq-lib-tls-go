@@ -1,29 +1,21 @@
-package tls
+package tlsprobe
 
 import (
 	"context"
 	"crypto/tls"
-	"fmt"
 	"net"
 	"time"
+
+	hqgoerrors "github.com/hueristiq/hq-lib-errors-go"
 )
 
 // inspectWithCTLS inspects host through the Go standard library's crypto/tls.
-//
-// Parameters:
-//   - ctx (context.Context): the context bounding the operation.
-//   - host (string): the hostname or IP (without port).
-//   - address (string): the dial address (host:port).
-//
-// Returns:
-//   - result (Result): the inspection outcome, including a peer address after a failed handshake.
-//   - err (error): non-nil when the connection or handshake fails.
 func (p *Client) inspectWithCTLS(ctx context.Context, host, address string) (result Result, err error) {
 	result.Mode = ModeCTLS
 
 	rawConn, err := p.dialer.DialContext(ctx, "tcp", address)
 	if err != nil {
-		err = fmt.Errorf("dialing %s: %w", address, err)
+		err = hqgoerrors.Wrapf(err, "dialing %s", address)
 
 		return result, err
 	}
@@ -56,13 +48,13 @@ func (p *Client) inspectWithCTLS(ctx context.Context, host, address string) (res
 	}()
 
 	if err = rawConn.SetDeadline(time.Now().Add(p.options.Timeout)); err != nil {
-		err = fmt.Errorf("setting connection deadline: %w", err)
+		err = hqgoerrors.Wrap(err, "setting connection deadline")
 
 		return result, err
 	}
 
 	if err = tlsConn.HandshakeContext(ctx); err != nil {
-		err = fmt.Errorf("handshake failed: %w", err)
+		err = hqgoerrors.Join(ErrHandshake, err)
 
 		return result, err
 	}
@@ -84,12 +76,6 @@ func (p *Client) inspectWithCTLS(ctx context.Context, host, address string) (res
 // empty string when it cannot be determined. Through a SOCKS5 proxy the
 // remote address is the proxy's, so callers should not treat an empty
 // result as a failure.
-//
-// Parameters:
-//   - conn (net.Conn): the established connection.
-//
-// Returns:
-//   - ip (string): the remote IP, if determinable.
 func remoteIP(conn net.Conn) (ip string) {
 	if conn == nil {
 		return ""

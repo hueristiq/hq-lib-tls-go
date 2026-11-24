@@ -1,6 +1,6 @@
-// Package tls probes TLS servers and serves TLS connections. The root package
-// is the client: it connects to TLS servers and captures negotiated parameters
-// and certificates.
+// Package tlsprobe probes TLS servers and serves TLS connections. The root
+// package is the client: it connects to TLS servers and captures negotiated
+// parameters and certificates.
 //
 // # Entry points
 //
@@ -56,4 +56,4 @@
 // [authority.CertificateAuthority]: https://pkg.go.dev/github.com/hueristiq/hq-lib-tls-go/authority#CertificateAuthority
 // [authority/cache]: https://pkg.go.dev/github.com/hueristiq/hq-lib-tls-go/authority/cache
 // [cache.InMemory]: https://pkg.go.dev/github.com/hueristiq/hq-lib-tls-go/authority/cache#InMemory
-package tls
+package tlsprobe

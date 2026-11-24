@@ -1,4 +1,4 @@
-package tls_test
+package tlsprobe_test
 
 import (
 	"context"

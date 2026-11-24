@@ -8,9 +8,12 @@ import (
 	"crypto/rand"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/pem"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -156,7 +159,7 @@ func TestRevokedViaOCSP(t *testing.T) {
 
 	require.NoError(t, err)
 
-	revoked, err := Revoked([][]byte{leaf.Raw, caCertificate.Raw})
+	revoked, err := Revoked(context.Background(), [][]byte{leaf.Raw, caCertificate.Raw})
 
 	require.NoError(t, err)
 	assert.True(t, revoked)
@@ -190,7 +193,7 @@ func TestNotRevokedViaOCSP(t *testing.T) {
 
 	require.NoError(t, err)
 
-	revoked, err := Revoked([][]byte{leaf.Raw, caCertificate.Raw})
+	revoked, err := Revoked(context.Background(), [][]byte{leaf.Raw, caCertificate.Raw})
 
 	require.NoError(t, err)
 	assert.False(t, revoked)
@@ -246,7 +249,7 @@ func TestRevokedViaCRL(t *testing.T) {
 		_, _ = w.Write(crl)
 	})
 
-	revoked, err := Revoked([][]byte{leaf.Raw, caCertificate.Raw})
+	revoked, err := Revoked(context.Background(), [][]byte{leaf.Raw, caCertificate.Raw})
 
 	require.NoError(t, err)
 	assert.True(t, revoked)
@@ -257,7 +260,7 @@ func TestRevokedWithoutSources(t *testing.T) {
 
 	caCertificate, _, leafCertificate := testCA(t, []string{"example.com"})
 
-	revoked, err := Revoked([][]byte{leafCertificate.Raw, caCertificate.Raw})
+	revoked, err := Revoked(context.Background(), [][]byte{leafCertificate.Raw, caCertificate.Raw})
 
 	require.NoError(t, err)
 	assert.False(t, revoked, "no revocation sources yields no revocation verdict")
@@ -301,31 +304,31 @@ func TestRevokedValidation(t *testing.T) {
 
 	caCertificate, caPrivateKey, leafCertificate := testCA(t, []string{"example.com"})
 
-	_, err := Revoked(nil)
+	_, err := Revoked(context.Background(), nil)
 	require.ErrorContains(t, err, "certificate chain is empty")
 
-	_, err = Revoked([][]byte{{0x00}})
+	_, err = Revoked(context.Background(), [][]byte{{0x00}})
 	require.ErrorContains(t, err, "parsing leaf certificate")
 
-	_, err = Revoked([][]byte{leafCertificate.Raw, {0x00}})
+	_, err = Revoked(context.Background(), [][]byte{leafCertificate.Raw, {0x00}})
 	require.ErrorContains(t, err, "parsing issuer certificate")
 
 	unreachable := []string{"http://127.0.0.1:1"}
 
 	withUnreachableOCSP := mintLeaf(t, caCertificate, caPrivateKey, unreachable, nil)
-	revoked, err := Revoked([][]byte{withUnreachableOCSP.Raw, caCertificate.Raw})
+	revoked, err := Revoked(context.Background(), [][]byte{withUnreachableOCSP.Raw, caCertificate.Raw})
 	require.NoError(t, err)
 	assert.False(t, revoked, "an unreachable OCSP responder is skipped")
 
 	withUnreachableCRL := mintLeaf(t, caCertificate, caPrivateKey, nil, unreachable)
-	revoked, err = Revoked([][]byte{withUnreachableCRL.Raw, caCertificate.Raw})
+	revoked, err = Revoked(context.Background(), [][]byte{withUnreachableCRL.Raw, caCertificate.Raw})
 	require.NoError(t, err)
 	assert.False(t, revoked, "an unreachable CRL is skipped")
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	revoked, err = RevokedContext(ctx, [][]byte{withUnreachableOCSP.Raw, caCertificate.Raw})
+	revoked, err = Revoked(ctx, [][]byte{withUnreachableOCSP.Raw, caCertificate.Raw})
 	require.NoError(t, err)
 	assert.False(t, revoked, "a canceled context skips the responder")
 }
@@ -357,7 +360,7 @@ func TestRevokedUnknownOCSPStatusFallsThrough(t *testing.T) {
 	responseDER, err := ocsp.CreateResponse(caCertificate, caCertificate, template, caPrivateKey)
 	require.NoError(t, err)
 
-	revoked, err := Revoked([][]byte{leaf.Raw, caCertificate.Raw})
+	revoked, err := Revoked(context.Background(), [][]byte{leaf.Raw, caCertificate.Raw})
 	require.NoError(t, err)
 	assert.False(t, revoked, "an unknown status is inconclusive")
 }
@@ -496,4 +499,58 @@ func TestCRLRevokesFailurePaths(t *testing.T) {
 		require.NoError(t, err)
 		assert.False(t, revoked, "a CRL without the leaf's serial does not revoke it")
 	})
+}
+
+func TestVerifyAndLoadCAPool(t *testing.T) {
+	t.Parallel()
+
+	caKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+
+	caTemplate := &x509.Certificate{
+		SerialNumber:          big.NewInt(1),
+		Subject:               pkix.Name{CommonName: "test-ca"},
+		NotBefore:             time.Now().Add(-time.Hour),
+		NotAfter:              time.Now().Add(time.Hour),
+		IsCA:                  true,
+		BasicConstraintsValid: true,
+		KeyUsage:              x509.KeyUsageCertSign,
+	}
+
+	caDER, err := x509.CreateCertificate(rand.Reader, caTemplate, caTemplate, &caKey.PublicKey, caKey)
+	require.NoError(t, err)
+
+	caCertificate, err := x509.ParseCertificate(caDER)
+	require.NoError(t, err)
+
+	leafKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+
+	leafTemplate := &x509.Certificate{
+		SerialNumber: big.NewInt(2),
+		Subject:      pkix.Name{CommonName: "example.com"},
+		NotBefore:    time.Now().Add(-time.Hour),
+		NotAfter:     time.Now().Add(time.Hour),
+		DNSNames:     []string{"example.com"},
+		KeyUsage:     x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+	}
+
+	leafDER, err := x509.CreateCertificate(rand.Reader, leafTemplate, caCertificate, &leafKey.PublicKey, caKey)
+	require.NoError(t, err)
+
+	roots := x509.NewCertPool()
+	roots.AddCert(caCertificate)
+
+	require.NoError(t, Verify([][]byte{leafDER}, "example.com", roots))
+	require.Error(t, Verify([][]byte{leafDER}, "other.example", roots))
+	require.Error(t, Verify(nil, "example.com", roots))
+
+	path := filepath.Join(t.TempDir(), "ca.pem")
+	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: caDER})
+	require.NoError(t, os.WriteFile(path, pemBytes, 0o600))
+
+	pool, err := LoadCAPool(path)
+	require.NoError(t, err)
+	require.NotNil(t, pool)
 }

@@ -1,4 +1,4 @@
-package tls
+package tlsprobe
 
 // This file only holds the module's go:generate directive, which regenerates
 // the cipher suite table inside ciphers.go from the ciphersuite.info dataset.

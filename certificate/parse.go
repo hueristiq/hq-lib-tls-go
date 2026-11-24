@@ -4,11 +4,11 @@ import (
 	"crypto/x509"
 	stdpkix "crypto/x509/pkix"
 	"encoding/pem"
-	"errors"
-	"fmt"
 	"net"
 	"strings"
 	"time"
+
+	hqgoerrors "github.com/hueristiq/hq-lib-errors-go"
 )
 
 // Subject is the subject (or issuer) of a certificate.
@@ -63,17 +63,9 @@ type Certificate struct {
 
 // Parse parses a DER certificate chain (leaf first) with the Go standard
 // library's crypto/x509.
-//
-// Parameters:
-//   - chainDER ([][]byte): the DER-encoded certificates.
-//
-// Returns:
-//   - certificates ([]*Certificate): the parsed certificates.
-//   - err (error): non-nil when the input is empty or a certificate cannot
-//     be parsed by either parser.
 func Parse(chainDER [][]byte) (certificates []*Certificate, err error) {
 	if len(chainDER) == 0 {
-		err = errors.New("cert.Parse: invalid input, certificate chain is empty")
+		err = hqgoerrors.New("invalid input, certificate chain is empty")
 
 		return nil, err
 	}
@@ -85,7 +77,7 @@ func Parse(chainDER [][]byte) (certificates []*Certificate, err error) {
 
 		certificate, err = parseOne(raw)
 		if err != nil {
-			err = fmt.Errorf("cert.Parse: parsing certificate: %w", err)
+			err = hqgoerrors.Wrap(err, "parsing certificate")
 
 			return nil, err
 		}
@@ -98,23 +90,16 @@ func Parse(chainDER [][]byte) (certificates []*Certificate, err error) {
 
 // parseOne parses a single DER certificate with the Go standard library and
 // extracts the metadata.
-//
-// Parameters:
-//   - raw ([]byte): the DER-encoded certificate.
-//
-// Returns:
-//   - certificate (*Certificate): the parsed certificate.
-//   - err (error): non-nil when the certificate is empty or cannot be parsed.
 func parseOne(raw []byte) (certificate *Certificate, err error) {
 	if len(raw) == 0 {
-		err = errors.New("cert.parseOne: invalid input, certificate is empty")
+		err = hqgoerrors.New("invalid input, certificate is empty")
 
 		return nil, err
 	}
 
 	parsed, err := x509.ParseCertificate(raw)
 	if err != nil {
-		err = fmt.Errorf("cert.parseOne: %w", err)
+		err = hqgoerrors.Stack(err)
 
 		return nil, err
 	}
@@ -124,12 +109,6 @@ func parseOne(raw []byte) (certificate *Certificate, err error) {
 
 // extractCertificate copies the metadata of a standard library certificate
 // into the package's Certificate type.
-//
-// Parameters:
-//   - certificate (*x509.Certificate): the parsed certificate.
-//
-// Returns:
-//   - extracted (*Certificate): the copied certificate.
 func extractCertificate(certificate *x509.Certificate) (extracted *Certificate) {
 	extracted = &Certificate{
 		Raw:                   certificate.Raw,
@@ -151,12 +130,6 @@ func extractCertificate(certificate *x509.Certificate) (extracted *Certificate) 
 }
 
 // subjectFrom converts a standard library pkix.Name into a Subject.
-//
-// Parameters:
-//   - name (*stdpkix.Name): the pkix name to convert.
-//
-// Returns:
-//   - subject (Subject): the converted subject.
 func subjectFrom(name *stdpkix.Name) (subject Subject) {
 	subject = Subject{
 		CommonName:         name.CommonName,
@@ -171,12 +144,6 @@ func subjectFrom(name *stdpkix.Name) (subject Subject) {
 }
 
 // ipStrings renders IP addresses as strings.
-//
-// Parameters:
-//   - addresses ([]net.IP): the IP addresses.
-//
-// Returns:
-//   - rendered ([]string): the rendered addresses.
 func ipStrings(addresses []net.IP) (rendered []string) {
 	rendered = make([]string, 0, len(addresses))
 
@@ -191,12 +158,6 @@ func ipStrings(addresses []net.IP) (rendered []string) {
 // name match, a wildcard match (with a single label under the wildcard),
 // or an exact IP match. Hosts are compared case-insensitively with a
 // trailing dot ignored.
-//
-// Parameters:
-//   - host (string): the hostname or IP to check (with or without port).
-//
-// Returns:
-//   - covered (bool): whether the certificate covers host.
 func (c *Certificate) CoversHost(host string) (covered bool) {
 	if c == nil {
 		return false
@@ -231,13 +192,6 @@ func (c *Certificate) CoversHost(host string) (covered bool) {
 // "*." + rest: the host must end in "." + rest and carry exactly one
 // label where the wildcard sits, so "*.example.com" covers
 // "www.example.com" but neither "example.com" nor "a.b.example.com".
-//
-// Parameters:
-//   - host (string): the normalized hostname.
-//   - rest (string): the suffix after the wildcard label.
-//
-// Returns:
-//   - covered (bool): whether the wildcard covers host.
 func wildcardCovers(host, rest string) (covered bool) {
 	suffix := "." + strings.ToLower(rest)
 
@@ -257,12 +211,6 @@ func wildcardCovers(host, rest string) (covered bool) {
 // normalizeHost strips a port, folds to lowercase, and removes a single
 // trailing dot, mirroring the normalization used for certificate hostname
 // matching.
-//
-// Parameters:
-//   - host (string): the host to normalize.
-//
-// Returns:
-//   - normalized (string): the normalized host.
 func normalizeHost(host string) (normalized string) {
 	if hostname, _, err := net.SplitHostPort(host); err == nil {
 		host = hostname
@@ -275,9 +223,6 @@ func normalizeHost(host string) (normalized string) {
 
 // PEMBlock converts the certificate to a "CERTIFICATE" PEM block, per
 // [RFC 7468](https://www.rfc-editor.org/info/rfc7468/).
-//
-// Returns:
-//   - pemBytes ([]byte): the PEM-encoded certificate.
 func (c *Certificate) PEMBlock() (pemBytes []byte) {
 	block := &pem.Block{
 		Type:  "CERTIFICATE",

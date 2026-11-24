@@ -1,4 +1,4 @@
-package tls
+package tlsprobe
 
 import (
 	"context"
@@ -44,7 +44,7 @@ func TestInspectOpenSSLMissingBinary(t *testing.T) {
 	require.NoError(t, err)
 
 	_, err = client.Inspect(context.Background(), "example.com:443")
-	require.ErrorContains(t, err, "inspectWithOpenSSL")
+	require.ErrorIs(t, err, ErrOpenSSLUnavailable)
 }
 
 func TestParseOpenSSLOutputBranches(t *testing.T) {

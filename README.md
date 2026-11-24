@@ -26,13 +26,12 @@
 
 ## Features
 
-- **CA generation:** create self-signed CAs with custom subject, validity, and RSA-2048, ECDSA P-256, or Ed25519 keys.
-- **Certificate issuance:** issue leaf certificates for DNS names, IPs, emails, or URIs, with keys inheriting the CA algorithm.
-- **SNI and caching:** per-host certificate generation, TLS 1.2 minimum, HTTP/2 or HTTP/1.1 ALPN, an allowlist through `WithAllowedHosts`, and optional caching through `authority/cache`.
+- **Certificate authority:** generate RSA-2048, ECDSA P-256, or Ed25519 CAs and issue leaves for DNS, IP, email, or URI names.
+- **SNI server:** per-host certificates, TLS 1.2 minimum, ALPN, `WithAllowedHosts`, and optional caching.
 - **Connection modes:** dial through `crypto/tls` or the OpenSSL `s_client` binary.
-- **Fingerprints:** compute JA3 and JA3S segments from handshake bytes, and JARM from ten crafted ClientHello probes.
-- **Certificate analysis:** tolerant chain parsing, subject and issuer metadata, hostname coverage, digests, and trust or revocation checks.
-- **Cipher classification:** an embedded table marks suites insecure, weak, secure, or recommended.
+- **Fingerprints:** JA3/JA3S segments and JARM from ten ClientHello probes.
+- **Certificate analysis:** tolerant chain parsing, metadata, hostname coverage, digests, trust, and revocation.
+- **Cipher classification:** embedded suites marked insecure, weak, secure, or recommended.
 
 ## Installation
 
@@ -483,6 +482,14 @@ func main() {
 ```
 
 The embedded cipher classification table is generated from the [ciphersuite.info](https://ciphersuite.info) dataset; see `cmd/ciphersgen` for the generator. JA3 and JA3S summarize a captured ClientHello and ServerHello, and JARM fingerprints a server by sending ten crafted ClientHello probes.
+
+### Cipher classification
+
+```go
+for _, suite := range hqgotls.CipherSuitesBySecurity(hqgotls.CipherSecurityInsecure) {
+	fmt.Printf("%#04x\n", suite)
+}
+```
 
 ## Contributing
 

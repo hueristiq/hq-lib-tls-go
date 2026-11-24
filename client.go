@@ -1,14 +1,14 @@
-package tls
+package tlsprobe
 
 import (
 	"context"
 	"crypto/tls"
-	"errors"
-	"fmt"
 	"net"
 	"time"
 
 	"golang.org/x/net/proxy"
+
+	hqgoerrors "github.com/hueristiq/hq-lib-errors-go"
 )
 
 const (
@@ -31,14 +31,6 @@ type Client struct {
 
 // New creates a Client. Unset options fall back to their defaults, and
 // invalid values are rejected.
-//
-// Parameters:
-//   - ofs (...OptionFunc): a variadic list of OptionFunc functions to configure
-//     the client (e.g., [WithMode], [WithTimeout]).
-//
-// Returns:
-//   - client (*Client): the initialized client.
-//   - err (error): an error if an option value is invalid; otherwise, nil.
 func New(ofs ...OptionFunc) (client *Client, err error) {
 	opts := &Options{
 		Mode:          defaultMode,
@@ -55,7 +47,7 @@ func New(ofs ...OptionFunc) (client *Client, err error) {
 	}
 
 	if err = opts.validate(); err != nil {
-		err = fmt.Errorf("client.New: %w", err)
+		err = hqgoerrors.Stack(err)
 
 		return nil, err
 	}
@@ -83,18 +75,10 @@ func New(ofs ...OptionFunc) (client *Client, err error) {
 // Dialing and handshake failures are returned as err. A reached server
 // yields a partial result containing its mode and peer address alongside
 // the error; callers must check err before using negotiated parameters.
-//
-// Parameters:
-//   - ctx (context.Context): the context bounding the whole operation.
-//   - host (string): the target, as hostname, IP, "host:port", or "IP:port".
-//
-// Returns:
-//   - result (Result): the inspection outcome, including partial connection metadata on failure.
-//   - err (error): non-nil when inspection fails.
 func (p *Client) Inspect(ctx context.Context, host string) (result Result, err error) {
 	host, port, err := splitHostPort(host)
 	if err != nil {
-		err = fmt.Errorf("client.Inspect: %w", err)
+		err = hqgoerrors.Stack(err)
 
 		return Result{}, err
 	}
@@ -114,7 +98,7 @@ func (p *Client) Inspect(ctx context.Context, host string) (result Result, err e
 	result.Host = host
 
 	if err != nil {
-		err = fmt.Errorf("client.Inspect: inspecting %s: %w", host, err)
+		err = hqgoerrors.Wrapf(err, "inspecting %s", host)
 
 		return result, err
 	}
@@ -126,17 +110,9 @@ func (p *Client) Inspect(ctx context.Context, host string) (result Result, err e
 // the port to 443 when absent. IPv6 literals must be bracketed, as in
 // net.JoinHostPort's syntax. A present port is passed through unchanged; the
 // dialer reports an unusable value.
-//
-// Parameters:
-//   - host (string): the target as given by the caller.
-//
-// Returns:
-//   - hostname (string): the host without port.
-//   - port (string): the port as given, or 443 when absent.
-//   - err (error): non-nil when the input is empty.
 func splitHostPort(host string) (hostname, port string, err error) {
 	if host == "" {
-		err = errors.New("client.splitHostPort: invalid input, host is empty")
+		err = hqgoerrors.New("invalid input, host is empty")
 
 		return "", "", err
 	}
@@ -209,12 +185,6 @@ type OptionFunc func(opts *Options)
 // WithMode sets the TLS connection mode.
 //
 // The default is [ModeCTLS].
-//
-// Parameters:
-//   - mode (Mode): the connection mode to use ([ModeCTLS] or [ModeOpenSSL]).
-//
-// Returns:
-//   - fn (OptionFunc): a functional option that sets the Mode field in the options.
 func WithMode(mode Mode) (fn OptionFunc) {
 	return func(opts *Options) {
 		opts.Mode = mode
@@ -226,12 +196,6 @@ func WithMode(mode Mode) (fn OptionFunc) {
 //
 // The default is 5 seconds, and the timeout must be positive: [New] returns
 // an error otherwise.
-//
-// Parameters:
-//   - timeout (time.Duration): the connection timeout (e.g., 5*time.Second).
-//
-// Returns:
-//   - fn (OptionFunc): a functional option that sets the Timeout field in the options.
 func WithTimeout(timeout time.Duration) (fn OptionFunc) {
 	return func(opts *Options) {
 		opts.Timeout = timeout
@@ -243,12 +207,6 @@ func WithTimeout(timeout time.Duration) (fn OptionFunc) {
 //
 // When unset, the inspected host is used. This is useful when inspecting by IP
 // while presenting a hostname, or for virtual-host discovery.
-//
-// Parameters:
-//   - serverName (string): the SNI name to send (e.g., "example.com").
-//
-// Returns:
-//   - fn (OptionFunc): a functional option that sets the ServerName field in the options.
 func WithServerName(serverName string) (fn OptionFunc) {
 	return func(opts *Options) {
 		opts.ServerName = serverName
@@ -260,12 +218,6 @@ func WithServerName(serverName string) (fn OptionFunc) {
 // When unset, the dialing library's default set is used. Restricting the
 // list enables cipher-suite enumeration: inspect once per suite and read the
 // negotiated [Result.CipherSuite].
-//
-// Parameters:
-//   - cipherSuites ([]uint16): the cipher suite IDs to offer.
-//
-// Returns:
-//   - fn (OptionFunc): a functional option that sets the CipherSuites field in the options.
 func WithCipherSuites(cipherSuites []uint16) (fn OptionFunc) {
 	return func(opts *Options) {
 		opts.CipherSuites = cipherSuites
@@ -275,12 +227,6 @@ func WithCipherSuites(cipherSuites []uint16) (fn OptionFunc) {
 // WithMinVersion sets the minimum TLS version offered in the ClientHello.
 //
 // When zero, the dialing library's default applies.
-//
-// Parameters:
-//   - minVersion (uint16): the minimum version (e.g., [tls.VersionTLS12]).
-//
-// Returns:
-//   - fn (OptionFunc): a functional option that sets the MinVersion field in the options.
 func WithMinVersion(minVersion uint16) (fn OptionFunc) {
 	return func(opts *Options) {
 		opts.MinVersion = minVersion
@@ -290,12 +236,6 @@ func WithMinVersion(minVersion uint16) (fn OptionFunc) {
 // WithMaxVersion sets the maximum TLS version offered in the ClientHello.
 //
 // When zero, the dialing library's default applies.
-//
-// Parameters:
-//   - maxVersion (uint16): the maximum version (e.g., [tls.VersionTLS13]).
-//
-// Returns:
-//   - fn (OptionFunc): a functional option that sets the MaxVersion field in the options.
 func WithMaxVersion(maxVersion uint16) (fn OptionFunc) {
 	return func(opts *Options) {
 		opts.MaxVersion = maxVersion
@@ -305,12 +245,6 @@ func WithMaxVersion(maxVersion uint16) (fn OptionFunc) {
 // WithNextProtos sets the ALPN protocols advertised in the ClientHello.
 //
 // The default is the dialing library's default set.
-//
-// Parameters:
-//   - nextProtos (...string): the ALPN protocol identifiers, in preference order.
-//
-// Returns:
-//   - fn (OptionFunc): a functional option that sets the NextProtos field in the options.
 func WithNextProtos(nextProtos ...string) (fn OptionFunc) {
 	return func(opts *Options) {
 		opts.NextProtos = nextProtos
@@ -320,12 +254,6 @@ func WithNextProtos(nextProtos ...string) (fn OptionFunc) {
 // WithProxy sets a SOCKS5 proxy for the connection.
 //
 // The proxy is used by the crypto/tls and JARM connections alike.
-//
-// Parameters:
-//   - proxyAddress (string): the SOCKS5 proxy address (e.g., "127.0.0.1:9050").
-//
-// Returns:
-//   - fn (OptionFunc): a functional option that sets the Proxy field in the options.
 func WithProxy(proxyAddress string) (fn OptionFunc) {
 	return func(opts *Options) {
 		opts.Proxy = proxyAddress
@@ -335,12 +263,6 @@ func WithProxy(proxyAddress string) (fn OptionFunc) {
 // WithOpenSSLBinary sets the OpenSSL binary used by [ModeOpenSSL].
 //
 // The default is "openssl", resolved through PATH.
-//
-// Parameters:
-//   - path (string): the OpenSSL binary path or name.
-//
-// Returns:
-//   - fn (OptionFunc): a functional option that sets the OpenSSLBinary field in the options.
 func WithOpenSSLBinary(path string) (fn OptionFunc) {
 	return func(opts *Options) {
 		opts.OpenSSLBinary = path
@@ -349,12 +271,6 @@ func WithOpenSSLBinary(path string) (fn OptionFunc) {
 
 // validateVersion reports whether version is a recognized TLS version or
 // zero (library default).
-//
-// Parameters:
-//   - version (uint16): the version ID to check.
-//
-// Returns:
-//   - valid (bool): true when the version is recognized or zero; otherwise, false.
 func validateVersion(version uint16) (valid bool) {
 	switch version {
 	case 0, sslVersion30, tls.VersionTLS10, tls.VersionTLS11, tls.VersionTLS12, tls.VersionTLS13:
@@ -365,30 +281,31 @@ func validateVersion(version uint16) (valid bool) {
 }
 
 // validate normalizes the options and reports the first invalid value.
-//
-// Returns:
-//   - err (error): non-nil when a value is invalid; otherwise, nil.
 func (opts *Options) validate() (err error) {
+	if opts.Mode != ModeCTLS && opts.Mode != ModeOpenSSL {
+		return hqgoerrors.Errorf("invalid input, unrecognized TLS connection mode: %d", opts.Mode)
+	}
+
 	if opts.Timeout <= 0 {
-		err = fmt.Errorf("invalid input, timeout must be positive, got %v", opts.Timeout)
+		err = hqgoerrors.Errorf("invalid input, timeout must be positive, got %v", opts.Timeout)
 
 		return err
 	}
 
 	if !validateVersion(opts.MinVersion) {
-		err = fmt.Errorf("invalid input, unrecognized minimum TLS version: %#x", opts.MinVersion)
+		err = hqgoerrors.Errorf("invalid input, unrecognized minimum TLS version: %#x", opts.MinVersion)
 
 		return err
 	}
 
 	if !validateVersion(opts.MaxVersion) {
-		err = fmt.Errorf("invalid input, unrecognized maximum TLS version: %#x", opts.MaxVersion)
+		err = hqgoerrors.Errorf("invalid input, unrecognized maximum TLS version: %#x", opts.MaxVersion)
 
 		return err
 	}
 
 	if opts.MinVersion != 0 && opts.MaxVersion != 0 && opts.MinVersion > opts.MaxVersion {
-		err = fmt.Errorf("invalid input, minimum TLS version %#x exceeds maximum %#x", opts.MinVersion, opts.MaxVersion)
+		err = hqgoerrors.Errorf("invalid input, minimum TLS version %#x exceeds maximum %#x", opts.MinVersion, opts.MaxVersion)
 
 		return err
 	}

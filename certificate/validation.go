@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/x509"
-	"errors"
-	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -13,6 +11,8 @@ import (
 	"time"
 
 	"golang.org/x/crypto/ocsp"
+
+	hqgoerrors "github.com/hueristiq/hq-lib-errors-go"
 )
 
 const (
@@ -25,12 +25,6 @@ const (
 
 // Expired reports whether the certificate's validity period has already
 // ended at now.
-//
-// Parameters:
-//   - now (time.Time): the time to compare against.
-//
-// Returns:
-//   - expired (bool): whether the certificate is expired.
 func (c *Certificate) Expired(now time.Time) (expired bool) {
 	if c == nil {
 		return false
@@ -41,9 +35,6 @@ func (c *Certificate) Expired(now time.Time) (expired bool) {
 
 // SelfSigned reports whether the certificate's subject is its own issuer:
 // its subject and issuer names are byte-identical.
-//
-// Returns:
-//   - selfSigned (bool): whether the certificate is self-signed.
 func (c *Certificate) SelfSigned() (selfSigned bool) {
 	if c == nil {
 		return false
@@ -53,12 +44,6 @@ func (c *Certificate) SelfSigned() (selfSigned bool) {
 }
 
 // Mismatched reports whether the certificate does not cover host.
-//
-// Parameters:
-//   - host (string): the hostname or IP to check.
-//
-// Returns:
-//   - mismatched (bool): whether the certificate does not cover host.
 func (c *Certificate) Mismatched(host string) (mismatched bool) {
 	return !c.CoversHost(host)
 }
@@ -66,14 +51,6 @@ func (c *Certificate) Mismatched(host string) (mismatched bool) {
 // Untrusted reports whether a normal client using the system root store
 // would reject the chain when connecting to host. A chain whose leaf
 // cannot even be parsed is untrusted by definition, without an error.
-//
-// Parameters:
-//   - chainDER ([][]byte): the DER certificate chain, leaf first.
-//   - host (string): the hostname the client would connect to.
-//
-// Returns:
-//   - untrusted (bool): whether the chain fails verification.
-//   - err (error): non-nil when the input is empty.
 func Untrusted(chainDER [][]byte, host string) (untrusted bool, err error) {
 	// A nil pool makes Verify fall back to the system roots, so an error from
 	// SystemCertPool needs no separate handling.
@@ -85,41 +62,22 @@ func Untrusted(chainDER [][]byte, host string) (untrusted bool, err error) {
 // Verify checks chainDER for host against roots. A nil roots pool selects the
 // system roots. The leaf must carry the server-auth extended key usage, as a
 // normal client would require.
-//
-// Parameters:
-//   - chainDER ([][]byte): the DER certificate chain, leaf first.
-//   - host (string): the hostname to verify; a port, when present, is ignored.
-//   - roots (*x509.CertPool): the roots to verify against; nil selects the
-//     system roots.
-//
-// Returns:
-//   - err (error): nil when the chain is valid; otherwise the verification
-//     failure.
 func Verify(chainDER [][]byte, host string, roots *x509.CertPool) (err error) {
 	return verifyChain(chainDER, host, roots)
 }
 
 // verifyChain is the shared verification path behind [Verify] and
 // [untrustedWith].
-//
-// Parameters:
-//   - chainDER ([][]byte): the DER certificate chain, leaf first.
-//   - host (string): the hostname to verify.
-//   - roots (*x509.CertPool): the roots to verify against; nil selects the
-//     system roots.
-//
-// Returns:
-//   - err (error): nil when the chain is valid.
 func verifyChain(chainDER [][]byte, host string, roots *x509.CertPool) (err error) {
 	if len(chainDER) == 0 {
-		err = errors.New("cert.Verify: invalid input, certificate chain is empty")
+		err = hqgoerrors.New("invalid input, certificate chain is empty")
 
 		return
 	}
 
 	leaf, err := x509.ParseCertificate(chainDER[0])
 	if err != nil {
-		err = fmt.Errorf("cert.Verify: parsing leaf certificate: %w", err)
+		err = hqgoerrors.Wrap(err, "parsing leaf certificate")
 
 		return
 	}
@@ -148,18 +106,10 @@ func verifyChain(chainDER [][]byte, host string, roots *x509.CertPool) (err erro
 }
 
 // LoadCAPool reads a PEM file and returns its certificates as a root pool.
-//
-// Parameters:
-//   - path (string): the PEM file path.
-//
-// Returns:
-//   - pool (*x509.CertPool): the parsed roots.
-//   - err (error): non-nil when the file cannot be read or contains no
-//     certificates.
 func LoadCAPool(path string) (pool *x509.CertPool, err error) {
 	pemBytes, err := os.ReadFile(path) //nolint:gosec // path is the caller-specified CA file.
 	if err != nil {
-		err = fmt.Errorf("cert.LoadCAPool: %w", err)
+		err = hqgoerrors.Stack(err)
 
 		return
 	}
@@ -167,7 +117,7 @@ func LoadCAPool(path string) (pool *x509.CertPool, err error) {
 	pool = x509.NewCertPool()
 
 	if !pool.AppendCertsFromPEM(pemBytes) {
-		err = errors.New("cert.LoadCAPool: no certificates parsed from CA certificate file")
+		err = hqgoerrors.New("no certificates parsed from CA certificate file")
 
 		return
 	}
@@ -177,18 +127,9 @@ func LoadCAPool(path string) (pool *x509.CertPool, err error) {
 
 // untrustedWith reports whether the chain fails verification against the
 // given root pool, treating a pool of nil as the system roots.
-//
-// Parameters:
-//   - chainDER ([][]byte): the DER certificate chain, leaf first.
-//   - host (string): the hostname the client would connect to.
-//   - roots (*x509.CertPool): the roots to verify against; nil selects the system roots.
-//
-// Returns:
-//   - untrusted (bool): whether the chain fails verification.
-//   - err (error): non-nil when the input is empty.
 func untrustedWith(chainDER [][]byte, host string, roots *x509.CertPool) (untrusted bool, err error) {
 	if len(chainDER) == 0 {
-		err = errors.New("cert.Untrusted: invalid input, certificate chain is empty")
+		err = hqgoerrors.New("invalid input, certificate chain is empty")
 
 		return false, err
 	}
@@ -204,50 +145,24 @@ func untrustedWith(chainDER [][]byte, host string, roots *x509.CertPool) (untrus
 	return false, nil
 }
 
-// Revoked reports whether the leaf certificate has been revoked, checking
-// the certificate's OCSP responders first and falling back to its CRL
-// distribution points. A responder that is unreachable, empty, or
-// inconclusive ("unknown" status) is skipped in favor of the next source;
-// only an explicit "revoked" answer reports true.
-//
-// It is [RevokedContext] with a background context; use that form when the
-// caller needs to bound or cancel the network checks.
-//
-// Parameters:
-//   - chainDER ([][]byte): the DER certificate chain, leaf first, with the
-//     issuer second when present.
-//
-// Returns:
-//   - revoked (bool): whether a responder explicitly revoked the leaf.
-//   - err (error): non-nil when the leaf cannot be parsed.
-func Revoked(chainDER [][]byte) (revoked bool, err error) {
-	return RevokedContext(context.Background(), chainDER)
-}
-
-// RevokedContext reports whether the leaf certificate has been revoked,
+// Revoked reports whether the leaf certificate has been revoked,
 // checking the certificate's OCSP responders first and falling back to its CRL
 // distribution points. A responder that is unreachable, empty, or
 // inconclusive ("unknown" status) is skipped in favor of the next source;
 // only an explicit "revoked" answer reports true.
 //
-// Parameters:
-//   - ctx (context.Context): bounds the OCSP and CRL requests.
-//   - chainDER ([][]byte): the DER certificate chain, leaf first, with the
-//     issuer second when present.
-//
-// Returns:
-//   - revoked (bool): whether a responder explicitly revoked the leaf.
-//   - err (error): non-nil when the leaf cannot be parsed.
-func RevokedContext(ctx context.Context, chainDER [][]byte) (revoked bool, err error) {
+// The context bounds the OCSP and CRL requests. The chain holds the DER
+// certificate chain, leaf first, with the issuer second when present.
+func Revoked(ctx context.Context, chainDER [][]byte) (revoked bool, err error) {
 	if len(chainDER) == 0 {
-		err = errors.New("cert.RevokedContext: invalid input, certificate chain is empty")
+		err = hqgoerrors.New("invalid input, certificate chain is empty")
 
 		return false, err
 	}
 
 	leaf, err := x509.ParseCertificate(chainDER[0])
 	if err != nil {
-		err = fmt.Errorf("cert.RevokedContext: parsing leaf certificate: %w", err)
+		err = hqgoerrors.Wrap(err, "parsing leaf certificate")
 
 		return false, err
 	}
@@ -257,7 +172,7 @@ func RevokedContext(ctx context.Context, chainDER [][]byte) (revoked bool, err e
 	if len(chainDER) > 1 {
 		issuer, err = x509.ParseCertificate(chainDER[1])
 		if err != nil {
-			err = fmt.Errorf("cert.RevokedContext: parsing issuer certificate: %w", err)
+			err = hqgoerrors.Wrap(err, "parsing issuer certificate")
 
 			return false, err
 		}
@@ -298,33 +213,22 @@ func RevokedContext(ctx context.Context, chainDER [][]byte) (revoked bool, err e
 }
 
 // fetchOCSPStatus asks an OCSP responder about the leaf's status.
-//
-// Parameters:
-//   - ctx (context.Context): bounds the request.
-//   - client (*http.Client): the HTTP client.
-//   - leaf (*x509.Certificate): the certificate to check.
-//   - issuer (*x509.Certificate): the leaf's issuer.
-//   - url (string): the responder URL.
-//
-// Returns:
-//   - status (int): the OCSP status.
-//   - err (error): non-nil on any transport or verification failure.
 func fetchOCSPStatus(ctx context.Context, client *http.Client, leaf, issuer *x509.Certificate, url string) (status int, err error) {
 	request, err := ocsp.CreateRequest(leaf, issuer, nil)
 	if err != nil {
-		return ocsp.Unknown, fmt.Errorf("creating OCSP request: %w", err)
+		return ocsp.Unknown, hqgoerrors.Wrap(err, "creating OCSP request")
 	}
 
 	httpRequest, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(request))
 	if err != nil {
-		return ocsp.Unknown, fmt.Errorf("building OCSP request for %q: %w", url, err)
+		return ocsp.Unknown, hqgoerrors.Wrapf(err, "building OCSP request for %q", url)
 	}
 
 	httpRequest.Header.Set("Content-Type", "application/ocsp-request")
 
 	response, err := client.Do(httpRequest)
 	if err != nil {
-		return ocsp.Unknown, fmt.Errorf("posting OCSP request to %q: %w", url, err)
+		return ocsp.Unknown, hqgoerrors.Wrapf(err, "posting OCSP request to %q", url)
 	}
 
 	defer func() {
@@ -333,37 +237,27 @@ func fetchOCSPStatus(ctx context.Context, client *http.Client, leaf, issuer *x50
 
 	body, err := io.ReadAll(io.LimitReader(response.Body, maxRevocationBody))
 	if err != nil {
-		return ocsp.Unknown, fmt.Errorf("reading OCSP response: %w", err)
+		return ocsp.Unknown, hqgoerrors.Wrap(err, "reading OCSP response")
 	}
 
 	parsed, err := ocsp.ParseResponseForCert(body, leaf, issuer)
 	if err != nil {
-		return ocsp.Unknown, fmt.Errorf("parsing OCSP response from %q: %w", url, err)
+		return ocsp.Unknown, hqgoerrors.Wrapf(err, "parsing OCSP response from %q", url)
 	}
 
 	return parsed.Status, nil
 }
 
 // crlRevokes checks whether a CRL distribution point revokes the leaf.
-//
-// Parameters:
-//   - ctx (context.Context): bounds the request.
-//   - client (*http.Client): the HTTP client.
-//   - leaf (*x509.Certificate): the certificate to check.
-//   - url (string): the CRL URL.
-//
-// Returns:
-//   - revoked (bool): whether the CRL lists the leaf's serial number.
-//   - err (error): non-nil on any transport or parsing failure.
 func crlRevokes(ctx context.Context, client *http.Client, leaf *x509.Certificate, url string) (revoked bool, err error) {
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, url, http.NoBody)
 	if err != nil {
-		return false, fmt.Errorf("building CRL request for %q: %w", url, err)
+		return false, hqgoerrors.Wrapf(err, "building CRL request for %q", url)
 	}
 
 	response, err := client.Do(request)
 	if err != nil {
-		return false, fmt.Errorf("fetching CRL from %q: %w", url, err)
+		return false, hqgoerrors.Wrapf(err, "fetching CRL from %q", url)
 	}
 
 	defer func() {
@@ -372,12 +266,12 @@ func crlRevokes(ctx context.Context, client *http.Client, leaf *x509.Certificate
 
 	body, err := io.ReadAll(io.LimitReader(response.Body, maxRevocationBody))
 	if err != nil {
-		return false, fmt.Errorf("reading CRL: %w", err)
+		return false, hqgoerrors.Wrap(err, "reading CRL")
 	}
 
 	crl, err := x509.ParseRevocationList(body)
 	if err != nil {
-		return false, fmt.Errorf("parsing CRL from %q: %w", url, err)
+		return false, hqgoerrors.Wrapf(err, "parsing CRL from %q", url)
 	}
 
 	for _, entry := range crl.RevokedCertificateEntries {

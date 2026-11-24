@@ -1,4 +1,4 @@
-package tls
+package tlsprobe
 
 import (
 	"testing"
@@ -45,7 +45,7 @@ func TestModeString(t *testing.T) {
 	tests := map[Mode]string{
 		ModeCTLS:    "ctls",
 		ModeOpenSSL: "openssl",
-		Mode(99):    "ctls",
+		Mode(99):    "unknown",
 	}
 
 	for mode, expected := range tests {
@@ -55,4 +55,12 @@ func TestModeString(t *testing.T) {
 			assert.Equal(t, expected, mode.String())
 		})
 	}
+}
+
+func TestNewRejectsInvalidMode(t *testing.T) {
+	t.Parallel()
+
+	_, err := New(WithMode(Mode(99)))
+	require.Error(t, err)
+	require.ErrorContains(t, err, "unrecognized TLS connection mode")
 }

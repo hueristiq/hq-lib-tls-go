@@ -1,4 +1,4 @@
-package tls
+package tlsprobe
 
 import "testing"
 

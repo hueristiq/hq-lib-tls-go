@@ -1,4 +1,4 @@
-package tls
+package tlsprobe
 
 import "sort"
 
@@ -21,13 +21,6 @@ const (
 )
 
 // CipherSecurityOf returns the classification of a cipher suite ID.
-//
-// Parameters:
-//   - id (uint16): the cipher suite ID.
-//
-// Returns:
-//   - security (CipherSecurity): the classification.
-//   - known (bool): whether the suite is in the classification table.
 func CipherSecurityOf(id uint16) (security CipherSecurity, known bool) {
 	security, known = cipherClassification[id]
 
@@ -37,12 +30,6 @@ func CipherSecurityOf(id uint16) (security CipherSecurity, known bool) {
 // CipherSuitesBySecurity lists every cipher suite ID carrying the given
 // classification or better, in ascending order. [CipherSecuritySecure]
 // therefore includes the recommended suites as well.
-//
-// Parameters:
-//   - security (CipherSecurity): the minimum classification to include.
-//
-// Returns:
-//   - ids ([]uint16): the matching cipher suite IDs, ascending.
 func CipherSuitesBySecurity(security CipherSecurity) (ids []uint16) {
 	ids = make([]uint16, 0, len(cipherClassification))
 

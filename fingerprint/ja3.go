@@ -1,9 +1,9 @@
 package fingerprint
 
 import (
-	"errors"
-	"fmt"
 	"strconv"
+
+	hqgoerrors "github.com/hueristiq/hq-lib-errors-go"
 )
 
 const (
@@ -19,18 +19,10 @@ const (
 // version, the dash-joined cipher suites, extension types, elliptic
 // curves, and point formats, separated by commas. GREASE values are
 // dropped, per the JA3 specification.
-//
-// Parameters:
-//   - raw ([]byte): the ClientHello handshake message, with its four-byte
-//     handshake header, as captured by the parent client package.
-//
-// Returns:
-//   - ja3 (string): the JA3 segment, ready for [Digest].
-//   - err (error): non-nil when the message is truncated or malformed.
 func JA3(raw []byte) (ja3 string, err error) {
 	body, err := handshakeBody(raw)
 	if err != nil {
-		err = fmt.Errorf("fingerprint.JA3: %w", err)
+		err = hqgoerrors.Stack(err)
 
 		return "", err
 	}
@@ -38,7 +30,7 @@ func JA3(raw []byte) (ja3 string, err error) {
 	offset := 0
 
 	if offset+2 > len(body) {
-		return "", errors.New("fingerprint.JA3: invalid input, ClientHello is truncated at the version field")
+		return "", hqgoerrors.New("invalid input, ClientHello is truncated at the version field")
 	}
 
 	version := uint16(body[offset])<<8 | uint16(body[offset+1])
@@ -51,7 +43,7 @@ func JA3(raw []byte) (ja3 string, err error) {
 	// session ID
 	offset, _, err = readVariable(body, offset, 1)
 	if err != nil {
-		err = fmt.Errorf("fingerprint.JA3: reading session ID: %w", err)
+		err = hqgoerrors.Wrap(err, "reading session ID")
 
 		return "", err
 	}
@@ -59,7 +51,7 @@ func JA3(raw []byte) (ja3 string, err error) {
 	// cipher suites
 	offset, suites, err := readVariable(body, offset, 2)
 	if err != nil {
-		err = fmt.Errorf("fingerprint.JA3: reading cipher suites: %w", err)
+		err = hqgoerrors.Wrap(err, "reading cipher suites")
 
 		return "", err
 	}
@@ -73,7 +65,7 @@ func JA3(raw []byte) (ja3 string, err error) {
 	// compression methods
 	offset, _, err = readVariable(body, offset, 1)
 	if err != nil {
-		err = fmt.Errorf("fingerprint.JA3: reading compression methods: %w", err)
+		err = hqgoerrors.Wrap(err, "reading compression methods")
 
 		return "", err
 	}
@@ -86,7 +78,7 @@ func JA3(raw []byte) (ja3 string, err error) {
 	if extensionsPresent {
 		_, extensions, err = readVariable(body, offset, 2)
 		if err != nil {
-			err = fmt.Errorf("fingerprint.JA3: reading extensions: %w", err)
+			err = hqgoerrors.Wrap(err, "reading extensions")
 
 			return "", err
 		}
@@ -106,14 +98,6 @@ func JA3(raw []byte) (ja3 string, err error) {
 // parseExtensions walks an extension block, collecting the extension type
 // IDs in wire order plus the supported groups and point formats carried by
 // the curve-related extensions.
-//
-// Parameters:
-//   - extensions ([]byte): the extension block.
-//
-// Returns:
-//   - types ([]uint16): the extension type IDs.
-//   - curves ([]uint16): the supported groups.
-//   - pointFormats ([]byte): the point formats.
 func parseExtensions(extensions []byte) (types, curves []uint16, pointFormats []byte) {
 	for offset := 0; offset+4 <= len(extensions); {
 		extensionType := uint16(extensions[offset])<<8 | uint16(extensions[offset+1])
@@ -156,16 +140,9 @@ func parseExtensions(extensions []byte) (types, curves []uint16, pointFormats []
 
 // handshakeBody validates the handshake header and returns the message
 // body.
-//
-// Parameters:
-//   - raw ([]byte): the handshake message.
-//
-// Returns:
-//   - body ([]byte): the message body.
-//   - err (error): non-nil when raw is truncated.
 func handshakeBody(raw []byte) (body []byte, err error) {
 	if len(raw) < handshakeHeaderLength {
-		err = errors.New("fingerprint.handshakeBody: invalid input, handshake message is truncated")
+		err = hqgoerrors.New("invalid input, handshake message is truncated")
 
 		return nil, err
 	}
@@ -173,7 +150,7 @@ func handshakeBody(raw []byte) (body []byte, err error) {
 	length := int(raw[1])<<16 | int(raw[2])<<8 | int(raw[3])
 
 	if handshakeHeaderLength+length > len(raw) {
-		err = errors.New("fingerprint.handshakeBody: invalid input, handshake message body is truncated")
+		err = hqgoerrors.New("invalid input, handshake message body is truncated")
 
 		return nil, err
 	}
@@ -183,19 +160,9 @@ func handshakeBody(raw []byte) (body []byte, err error) {
 
 // readVariable reads a length-prefixed variable: a length field of
 // lengthBytes bytes followed by that many bytes of data.
-//
-// Parameters:
-//   - body ([]byte): the buffer to read from.
-//   - offset (int): the offset of the length field.
-//   - lengthBytes (int): the width of the length field, in bytes.
-//
-// Returns:
-//   - next (int): the offset just past the variable data.
-//   - data ([]byte): the variable payload copied out of the body.
-//   - err (error): non-nil when the buffer is truncated.
 func readVariable(body []byte, offset, lengthBytes int) (next int, data []byte, err error) {
 	if offset+lengthBytes > len(body) {
-		err = errors.New("fingerprint.readVariable: invalid input, buffer is truncated at a length field")
+		err = hqgoerrors.New("invalid input, buffer is truncated at a length field")
 
 		return 0, nil, err
 	}
@@ -210,7 +177,7 @@ func readVariable(body []byte, offset, lengthBytes int) (next int, data []byte, 
 	end := start + length
 
 	if end > len(body) {
-		err = errors.New("fingerprint.readVariable: invalid input, buffer is truncated inside variable-length data")
+		err = hqgoerrors.New("invalid input, buffer is truncated inside variable-length data")
 
 		return 0, nil, err
 	}

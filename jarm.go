@@ -1,4 +1,4 @@
-package tls
+package tlsprobe
 
 import (
 	"bytes"
@@ -13,6 +13,8 @@ import (
 	"net"
 	"strings"
 	"time"
+
+	hqgoerrors "github.com/hueristiq/hq-lib-errors-go"
 )
 
 // JARM probes are ten crafted ClientHellos sent over raw TCP. The server's
@@ -130,18 +132,10 @@ type jarmHello struct {
 // A timeout on any probe yields the all-zero hash: a partial fingerprint
 // would describe the client, not the server. A probe whose connection fails
 // contributes empty fields.
-//
-// Parameters:
-//   - ctx (context.Context): the context bounding the operation.
-//   - host (string): the target, as hostname, IP, "host:port", or "IP:port".
-//
-// Returns:
-//   - jarm (string): the 62-character JARM fingerprint.
-//   - err (error): non-nil when the input is invalid.
 func (p *Client) JARM(ctx context.Context, host string) (jarm string, err error) {
 	host, port, err := splitHostPort(host)
 	if err != nil {
-		err = fmt.Errorf("client.JARM: %w", err)
+		err = hqgoerrors.Stack(err)
 
 		return "", err
 	}
@@ -170,16 +164,6 @@ func (p *Client) JARM(ctx context.Context, host string) (jarm string, err error)
 
 // sendJARMProbe sends one crafted ClientHello and parses the ServerHello
 // response.
-//
-// Parameters:
-//   - ctx (context.Context): the context bounding the operation.
-//   - host (string): the SNI hostname.
-//   - address (string): the dial address.
-//   - parameters (*jarmProbeParameters): the probe's parameters.
-//
-// Returns:
-//   - hello (jarmHello): the parsed ServerHello data.
-//   - err (error): non-nil when the probe timed out.
 func (p *Client) sendJARMProbe(ctx context.Context, host, address string, parameters *jarmProbeParameters) (hello jarmHello, err error) {
 	conn, err := p.dialer.DialContext(ctx, "tcp", address)
 	if err != nil {
@@ -198,13 +182,13 @@ func (p *Client) sendJARMProbe(ctx context.Context, host, address string, parame
 
 	packet, err := buildJARMClientHello(host, parameters)
 	if err != nil {
-		return jarmHello{}, fmt.Errorf("client.sendJARMProbe: building probe: %w", err)
+		return jarmHello{}, hqgoerrors.Wrap(err, "building probe")
 	}
 
 	if _, err = conn.Write(packet); err != nil {
 		var netErr net.Error
 		if errors.As(err, &netErr) && netErr.Timeout() {
-			return jarmHello{}, fmt.Errorf("client.sendJARMProbe: writing probe: %w", err)
+			return jarmHello{}, hqgoerrors.Wrap(err, "writing probe")
 		}
 
 		return jarmHello{}, nil
@@ -216,14 +200,14 @@ func (p *Client) sendJARMProbe(ctx context.Context, host, address string, parame
 	if err != nil {
 		var netErr net.Error
 		if errors.As(err, &netErr) && netErr.Timeout() {
-			return jarmHello{}, fmt.Errorf("client.sendJARMProbe: reading server response: %w", err)
+			return jarmHello{}, hqgoerrors.Wrap(err, "reading server response")
 		}
 
 		return jarmHello{}, nil
 	}
 
 	if err = ctx.Err(); err != nil {
-		return jarmHello{}, fmt.Errorf("client.sendJARMProbe: context ended: %w", err)
+		return jarmHello{}, hqgoerrors.Wrap(err, "context ended")
 	}
 
 	return parseJARMServerHello(buffer[:n]), nil
@@ -231,13 +215,6 @@ func (p *Client) sendJARMProbe(ctx context.Context, host, address string, parame
 
 // buildJARMClientHello assembles a ClientHello record according to the
 // JARM specification.
-//
-// Parameters:
-//   - host (string): the SNI hostname.
-//   - parameters (*jarmProbeParameters): the probe's parameters.
-//
-// Returns:
-//   - packet ([]byte): the complete TLS record.
 func buildJARMClientHello(host string, parameters *jarmProbeParameters) (packet []byte, err error) {
 	recordVersion := []byte{0x03, 0x03}
 
@@ -325,13 +302,6 @@ func buildJARMClientHello(host string, parameters *jarmProbeParameters) (packet 
 }
 
 // buildJARMExtensions assembles the extension block of a JARM ClientHello.
-//
-// Parameters:
-//   - host (string): the SNI hostname.
-//   - parameters (*jarmProbeParameters): the probe's parameters.
-//
-// Returns:
-//   - extensions ([]byte): the length-prefixed extension block.
 func buildJARMExtensions(host string, parameters *jarmProbeParameters) (extensions []byte, err error) {
 	var all []byte
 
@@ -389,12 +359,6 @@ func buildJARMExtensions(host string, parameters *jarmProbeParameters) (extensio
 }
 
 // buildJARMServerName assembles the server_name (SNI) extension.
-//
-// Parameters:
-//   - host (string): the SNI hostname.
-//
-// Returns:
-//   - extension ([]byte): the extension bytes.
 func buildJARMServerName(host string) (extension []byte, err error) {
 	sni := []byte(host)
 
@@ -423,12 +387,6 @@ func buildJARMServerName(host string) (extension []byte, err error) {
 }
 
 // buildJARMALPN assembles the ALPN extension.
-//
-// Parameters:
-//   - parameters (*jarmProbeParameters): the probe's parameters.
-//
-// Returns:
-//   - extension ([]byte): the extension bytes.
 func buildJARMALPN(parameters *jarmProbeParameters) (extension []byte, err error) {
 	protocols := jarmALPNProtocols
 
@@ -470,12 +428,6 @@ func buildJARMALPN(parameters *jarmProbeParameters) (extension []byte, err error
 
 // buildJARMKeyShare assembles the key_share extension around the X25519
 // group with a random key exchange.
-//
-// Parameters:
-//   - grease (bool): prepend a GREASE share.
-//
-// Returns:
-//   - extension ([]byte): the extension bytes.
 func buildJARMKeyShare(grease bool) (extension []byte, err error) {
 	var share []byte
 
@@ -513,12 +465,6 @@ func buildJARMKeyShare(grease bool) (extension []byte, err error) {
 }
 
 // buildJARMSupportedVersions assembles the supported_versions extension.
-//
-// Parameters:
-//   - parameters (*jarmProbeParameters): the probe's parameters.
-//
-// Returns:
-//   - extension ([]byte): the extension bytes.
 func buildJARMSupportedVersions(parameters *jarmProbeParameters) (extension []byte, err error) {
 	versions := []uint16{0x0301, 0x0302, 0x0303}
 
@@ -558,12 +504,6 @@ func buildJARMSupportedVersions(parameters *jarmProbeParameters) (extension []by
 }
 
 // jarmCipherList selects the cipher list for a probe.
-//
-// Parameters:
-//   - parameters (*jarmProbeParameters): the probe's parameters.
-//
-// Returns:
-//   - ciphers ([]uint16): the cipher list.
 func jarmCipherList(parameters *jarmProbeParameters) (ciphers []uint16) {
 	if parameters.ciphers == "NO1.3" {
 		return jarmNo13Ciphers
@@ -573,13 +513,6 @@ func jarmCipherList(parameters *jarmProbeParameters) (ciphers []uint16) {
 }
 
 // jarmMung reorders items according to one of the JARM order mungings.
-//
-// Parameters:
-//   - items ([]T): the items to reorder.
-//   - order (string): FORWARD, REVERSE, BOTTOM_HALF, TOP_HALF, or MIDDLE_OUT.
-//
-// Returns:
-//   - reordered ([]T): the reordered items.
 func jarmMung[T any](items []T, order string) (reordered []T) {
 	switch order {
 	case "REVERSE":
@@ -628,12 +561,6 @@ func jarmMung[T any](items []T, order string) (reordered []T) {
 // parseJARMServerHello extracts the selected cipher, version, ALPN, and
 // extension types from a captured server flight using the fixed byte
 // offsets of the JARM wire format.
-//
-// Parameters:
-//   - data ([]byte): the captured bytes.
-//
-// Returns:
-//   - hello (jarmHello): the parsed fields; empty on unrecognized input.
 func parseJARMServerHello(data []byte) (hello jarmHello) {
 	if len(data) < 46 || data[0] == 21 || data[0] != 22 || data[5] != 2 {
 		return jarmHello{}
@@ -727,12 +654,6 @@ func parseJARMServerHello(data []byte) (hello jarmHello) {
 
 // jarmHash compresses the parsed ServerHello data of the ten probes into
 // the 62-character JARM fingerprint.
-//
-// Parameters:
-//   - hellos ([]jarmHello): the parsed probes.
-//
-// Returns:
-//   - hash (string): the fingerprint.
 func jarmHash(hellos []jarmHello) (hash string) {
 	empty := true
 
@@ -771,12 +692,6 @@ func jarmHash(hellos []jarmHello) (hash string) {
 // index: the position of the cipher in the ordered probe list, or "00"
 // when no cipher was selected, or "47" when the cipher is not in the list
 // (the value beyond the last index).
-//
-// Parameters:
-//   - cipher (string): the selected cipher as a hex string.
-//
-// Returns:
-//   - fuzzy (string): the two-character fuzzy value.
 func jarmCipherBytes(cipher string) (fuzzy string) {
 	if cipher == "" {
 		return "00"
@@ -794,12 +709,6 @@ func jarmCipherBytes(cipher string) (fuzzy string) {
 // jarmVersionByte maps the selected version to its single-character fuzzy
 // value: "a" through "f" for the minor version 0 through 5, or "0" when
 // absent or unrecognized.
-//
-// Parameters:
-//   - version (string): the selected version as a hex string.
-//
-// Returns:
-//   - fuzzy (string): the single-character fuzzy value.
 func jarmVersionByte(version string) (fuzzy string) {
 	if len(version) != 4 {
 		return "0"
@@ -817,12 +726,6 @@ func jarmVersionByte(version string) (fuzzy string) {
 }
 
 // randomGrease picks a random GREASE value.
-//
-// Parameters:
-//   - reader (io.Reader): the entropy source; production uses crypto/rand.Reader.
-//
-// Returns:
-//   - grease (uint16): the GREASE value.
 func randomGrease(reader io.Reader) (grease uint16) {
 	index, err := rand.Int(reader, big.NewInt(int64(len(jarmGreaseValues))))
 	if err != nil {
@@ -835,19 +738,11 @@ func randomGrease(reader io.Reader) (grease uint16) {
 }
 
 // randomBytes returns count cryptographically random bytes from reader.
-//
-// Parameters:
-//   - reader (io.Reader): the entropy source; production uses crypto/rand.Reader.
-//   - count (int): the number of bytes.
-//
-// Returns:
-//   - raw ([]byte): the random bytes.
-//   - err (error): non-nil when the entropy source fails.
 func randomBytes(reader io.Reader, count int) (raw []byte, err error) {
 	raw = make([]byte, count)
 
 	if _, err = io.ReadFull(reader, raw); err != nil {
-		return nil, fmt.Errorf("client.randomBytes: reading random bytes: %w", err)
+		return nil, hqgoerrors.Wrap(err, "reading random bytes")
 	}
 
 	return raw, nil
@@ -856,17 +751,9 @@ func randomBytes(reader io.Reader, count int) (raw []byte, err error) {
 // appendLength8 appends length as a single byte, reporting an overflow when it does
 // not fit. Every caller feeds lengths of buffers built in-memory a moment
 // earlier, so the bounds are always satisfiable.
-//
-// Parameters:
-//   - raw ([]byte): the destination buffer.
-//   - length (int): the value to append.
-//
-// Returns:
-//   - extended ([]byte): the extended buffer.
-//   - err (error): non-nil when length is negative or overflows the encoding width.
 func appendLength8(raw []byte, length int) (extended []byte, err error) {
 	if length < 0 || length > 0xFF {
-		return nil, fmt.Errorf("client.appendLength8: length %d does not fit in one byte", length)
+		return nil, hqgoerrors.Errorf("length %d does not fit in one byte", length)
 	}
 
 	return append(raw, byte(length)), nil
@@ -874,17 +761,9 @@ func appendLength8(raw []byte, length int) (extended []byte, err error) {
 
 // appendLength16 appends length as two big-endian bytes, reporting an
 // overflow when it does not fit.
-//
-// Parameters:
-//   - raw ([]byte): the destination buffer.
-//   - length (int): the value to append.
-//
-// Returns:
-//   - extended ([]byte): the extended buffer.
-//   - err (error): non-nil when length is negative or overflows the encoding width.
 func appendLength16(raw []byte, length int) (extended []byte, err error) {
 	if length < 0 || length > 0xFFFF {
-		return nil, fmt.Errorf("client.appendLength16: length %d does not fit in two bytes", length)
+		return nil, hqgoerrors.Errorf("length %d does not fit in two bytes", length)
 	}
 
 	return appendUint16(raw, uint16(length)), nil
@@ -892,30 +771,15 @@ func appendLength16(raw []byte, length int) (extended []byte, err error) {
 
 // appendLength24 appends length as three big-endian bytes and reports values
 // that do not fit.
-//
-// Parameters:
-//   - raw ([]byte): the destination buffer.
-//   - length (int): the value to append.
-//
-// Returns:
-//   - extended ([]byte): the extended buffer.
-//   - err (error): non-nil when length is negative or overflows the encoding width.
 func appendLength24(raw []byte, length int) (extended []byte, err error) {
 	if length < 0 || length > 0xFFFFFF {
-		return nil, fmt.Errorf("client.appendLength24: length %d does not fit in three bytes", length)
+		return nil, hqgoerrors.Errorf("length %d does not fit in three bytes", length)
 	}
 
 	return append(raw, byte(length>>16), byte(length>>8), byte(length)), nil //nolint:gosec // The range check bounds every converted byte to 0xff.
 }
 
 // appendUint16 appends value in big-endian order.
-//
-// Parameters:
-//   - raw ([]byte): the destination buffer.
-//   - value (uint16): the value to append.
-//
-// Returns:
-//   - extended ([]byte): the extended buffer.
 func appendUint16(raw []byte, value uint16) (extended []byte) {
 	raw = append(raw, byte(value>>8), byte(value&0xFF))
 

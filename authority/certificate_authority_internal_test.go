@@ -26,7 +26,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	hqgotlscache "github.com/hueristiq/hq-lib-tls-go/authority/cache"
+	hqgotlsauthoritycache "github.com/hueristiq/hq-lib-tls-go/authority/cache"
 )
 
 var testKeyTypes = []struct {
@@ -63,10 +63,10 @@ func newTestAuthority(t *testing.T, ofs ...OptionFunc) (ca *CertificateAuthority
 	return ca
 }
 
-func mustNewInMemory(t *testing.T, maxSize int) (c *hqgotlscache.InMemory) {
+func mustNewInMemory(t *testing.T, maxSize int) (c *hqgotlsauthoritycache.InMemory) {
 	t.Helper()
 
-	c, err := hqgotlscache.NewInMemory(maxSize)
+	c, err := hqgotlsauthoritycache.NewInMemory(maxSize)
 	require.NoError(t, err)
 
 	return c
@@ -74,12 +74,12 @@ func mustNewInMemory(t *testing.T, maxSize int) (c *hqgotlscache.InMemory) {
 
 type recordingCertificateCache struct {
 	mutex   sync.Mutex
-	entries map[string]*hqgotlscache.CertificateCacheEntry
+	entries map[string]*hqgotlsauthoritycache.CertificateCacheEntry
 	gets    int
 	sets    int
 }
 
-func (c *recordingCertificateCache) Get(host string) (entry *hqgotlscache.CertificateCacheEntry, found bool) {
+func (c *recordingCertificateCache) Get(host string) (entry *hqgotlsauthoritycache.CertificateCacheEntry, found bool) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
@@ -90,7 +90,7 @@ func (c *recordingCertificateCache) Get(host string) (entry *hqgotlscache.Certif
 	return entry, found
 }
 
-func (c *recordingCertificateCache) Set(host string, entry *hqgotlscache.CertificateCacheEntry) (err error) {
+func (c *recordingCertificateCache) Set(host string, entry *hqgotlsauthoritycache.CertificateCacheEntry) (err error) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
@@ -644,7 +644,7 @@ func TestGetTLSCertificateRegeneratesAfterExpiry(t *testing.T) {
 	entry, found := certificateCache.Get("example.com")
 	require.True(t, found)
 
-	require.NoError(t, certificateCache.Set("example.com", &hqgotlscache.CertificateCacheEntry{
+	require.NoError(t, certificateCache.Set("example.com", &hqgotlsauthoritycache.CertificateCacheEntry{
 		Certificate: entry.Certificate,
 		CreatedAt:   time.Now().Add(-2 * time.Minute),
 	}))
@@ -1739,15 +1739,15 @@ func TestIsCacheEntryValid(t *testing.T) {
 
 	tests := []struct {
 		name  string
-		entry *hqgotlscache.CertificateCacheEntry
+		entry *hqgotlsauthoritycache.CertificateCacheEntry
 		want  bool
 	}{
-		{"nil certificate", &hqgotlscache.CertificateCacheEntry{Certificate: nil, CreatedAt: now}, false},
-		{"nil leaf", &hqgotlscache.CertificateCacheEntry{Certificate: &tls.Certificate{}, CreatedAt: now}, false},
-		{"fresh entry", &hqgotlscache.CertificateCacheEntry{Certificate: &tls.Certificate{Leaf: &x509.Certificate{NotAfter: now.Add(time.Hour)}}, CreatedAt: now}, true},
-		{"entry created in the future", &hqgotlscache.CertificateCacheEntry{Certificate: &tls.Certificate{Leaf: &x509.Certificate{NotAfter: now.Add(2 * time.Hour)}}, CreatedAt: now.Add(time.Hour)}, false},
-		{"entry older than max age", &hqgotlscache.CertificateCacheEntry{Certificate: &tls.Certificate{Leaf: &x509.Certificate{NotAfter: now.Add(time.Hour)}}, CreatedAt: now.Add(-2 * time.Hour)}, false},
-		{"expired leaf", &hqgotlscache.CertificateCacheEntry{Certificate: &tls.Certificate{Leaf: &x509.Certificate{NotAfter: now.Add(-time.Hour)}}, CreatedAt: now}, false},
+		{"nil certificate", &hqgotlsauthoritycache.CertificateCacheEntry{Certificate: nil, CreatedAt: now}, false},
+		{"nil leaf", &hqgotlsauthoritycache.CertificateCacheEntry{Certificate: &tls.Certificate{}, CreatedAt: now}, false},
+		{"fresh entry", &hqgotlsauthoritycache.CertificateCacheEntry{Certificate: &tls.Certificate{Leaf: &x509.Certificate{NotAfter: now.Add(time.Hour)}}, CreatedAt: now}, true},
+		{"entry created in the future", &hqgotlsauthoritycache.CertificateCacheEntry{Certificate: &tls.Certificate{Leaf: &x509.Certificate{NotAfter: now.Add(2 * time.Hour)}}, CreatedAt: now.Add(time.Hour)}, false},
+		{"entry older than max age", &hqgotlsauthoritycache.CertificateCacheEntry{Certificate: &tls.Certificate{Leaf: &x509.Certificate{NotAfter: now.Add(time.Hour)}}, CreatedAt: now.Add(-2 * time.Hour)}, false},
+		{"expired leaf", &hqgotlsauthoritycache.CertificateCacheEntry{Certificate: &tls.Certificate{Leaf: &x509.Certificate{NotAfter: now.Add(-time.Hour)}}, CreatedAt: now}, false},
 	}
 
 	for _, tt := range tests {
@@ -1776,7 +1776,7 @@ func TestTLSCertificateRegeneratesWithoutCache(t *testing.T) {
 func TestTLSCertificateServesFromCustomCache(t *testing.T) {
 	t.Parallel()
 
-	certificateCache := &recordingCertificateCache{entries: make(map[string]*hqgotlscache.CertificateCacheEntry)}
+	certificateCache := &recordingCertificateCache{entries: make(map[string]*hqgotlsauthoritycache.CertificateCacheEntry)}
 
 	ca := newTestAuthority(t, WithCache(certificateCache))
 
@@ -2366,11 +2366,11 @@ func TestWithAllowedHostsRequiresWrappedHandler(t *testing.T) {
 }
 
 type secondLookupCache struct {
-	entry *hqgotlscache.CertificateCacheEntry
+	entry *hqgotlsauthoritycache.CertificateCacheEntry
 	gets  int
 }
 
-func (c *secondLookupCache) Get(string) (entry *hqgotlscache.CertificateCacheEntry, found bool) {
+func (c *secondLookupCache) Get(string) (entry *hqgotlsauthoritycache.CertificateCacheEntry, found bool) {
 	c.gets++
 
 	if c.gets == 1 {
@@ -2380,14 +2380,14 @@ func (c *secondLookupCache) Get(string) (entry *hqgotlscache.CertificateCacheEnt
 	return c.entry, true
 }
 
-func (c *secondLookupCache) Set(string, *hqgotlscache.CertificateCacheEntry) (err error) {
+func (c *secondLookupCache) Set(string, *hqgotlsauthoritycache.CertificateCacheEntry) (err error) {
 	return nil
 }
 
 func TestGetTLSCertificateSecondCacheLookup(t *testing.T) {
 	t.Parallel()
 
-	entry := &hqgotlscache.CertificateCacheEntry{
+	entry := &hqgotlsauthoritycache.CertificateCacheEntry{
 		Certificate: &tls.Certificate{Leaf: &x509.Certificate{NotAfter: time.Now().Add(time.Hour)}},
 		CreatedAt:   time.Now(),
 	}

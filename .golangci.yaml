@@ -122,7 +122,7 @@ linters:
                 - pkg: github.com/hueristiq/hq-lib-tls-go/authority
                   alias: hqgotlsauthority
                 - pkg: github.com/hueristiq/hq-lib-tls-go/authority/cache
-                  alias: hqgotlscache
+                  alias: hqgotlsauthoritycache
                 - pkg: github.com/hueristiq/hq-lib-tls-go/certificate
                   alias: hqgotlscertificate
                 - pkg: github.com/hueristiq/hq-lib-tls-go/fingerprint

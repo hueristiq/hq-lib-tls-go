@@ -50,7 +50,7 @@ The serving API lives in the `authority` subpackage; the client API lives in the
 ```go
 import (
 	hqgotlsauthority "github.com/hueristiq/hq-lib-tls-go/authority"
-	hqgotlscache "github.com/hueristiq/hq-lib-tls-go/authority/cache"
+	hqgotlsauthoritycache "github.com/hueristiq/hq-lib-tls-go/authority/cache"
 	hqgotlscertificate "github.com/hueristiq/hq-lib-tls-go/certificate"
 	hqgotls "github.com/hueristiq/hq-lib-tls-go"
 	hqgotlsfingerprint "github.com/hueristiq/hq-lib-tls-go/fingerprint"
@@ -260,7 +260,7 @@ func main() {
 
 `NewTLSConfig` returns a `*tls.Config` that generates a certificate for whatever hostname the client requests via SNI. Caching is opt-in: pass a cache from the `cache` package to `New` via `WithCache` to reuse certificates across connections, and tune entry expiry with `WithCacheMaxAge`. Without a cache, a certificate is regenerated for every request.
 
-**Production use:** the cache is off by default. Enable it with `WithCache(hqgotlscache.NewInMemory(maxSize))`, sized to the number of distinct hosts served, and set `WithCacheMaxAge` well below the leaf validity (24 hours for SNI-driven issuance). For dynamic per-host issuance, consider `WithCAKeyType(KeyTypeECDSAP256)`: ECDSA-P256 leaf generation is faster than RSA-2048.
+**Production use:** the cache is off by default. Enable it with `WithCache(hqgotlsauthoritycache.NewInMemory(maxSize))`, sized to the number of distinct hosts served, and set `WithCacheMaxAge` well below the leaf validity (24 hours for SNI-driven issuance). For dynamic per-host issuance, consider `WithCAKeyType(KeyTypeECDSAP256)`: ECDSA-P256 leaf generation is faster than RSA-2048.
 
 The `GetCertificate` hook mints a new key pair for every distinct requested hostname. An Internet-facing server should restrict issuance (see [Restricting issuance to known hosts](#restricting-issuance-to-known-hosts)) to avoid CPU exhaustion from unbounded certificate generation.
 
@@ -273,7 +273,7 @@ import (
 	"time"
 
 	hqgotlsauthority "github.com/hueristiq/hq-lib-tls-go/authority"
-	hqgotlscache "github.com/hueristiq/hq-lib-tls-go/authority/cache"
+	hqgotlsauthoritycache "github.com/hueristiq/hq-lib-tls-go/authority/cache"
 )
 
 func main() {
@@ -286,7 +286,7 @@ func main() {
 	}
 
 	// Initialize the certificate cache and the CertificateAuthority.
-	certificateCache, err := hqgotlscache.NewInMemory(1024)
+	certificateCache, err := hqgotlsauthoritycache.NewInMemory(1024)
 	if err != nil {
 		log.Fatalf("Failed to initialize certificate cache: %v", err)
 	}

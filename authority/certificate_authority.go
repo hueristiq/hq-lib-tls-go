@@ -18,7 +18,7 @@ import (
 	"golang.org/x/text/unicode/norm"
 
 	hqgoerrors "github.com/hueristiq/hq-lib-errors-go"
-	hqgotlscache "github.com/hueristiq/hq-lib-tls-go/authority/cache"
+	hqgotlsauthoritycache "github.com/hueristiq/hq-lib-tls-go/authority/cache"
 )
 
 const (
@@ -39,7 +39,7 @@ const (
 
 // A CertificateAuthority generates and signs TLS certificates from a single CA certificate and
 // its private key. It issues certificates dynamically for the hostname requested via Server Name
-// Indication (SNI). Caching of issued certificates is opt-in: pass a [hqgotlscache.CertificateCache]
+// Indication (SNI). Caching of issued certificates is opt-in: pass a [hqgotlsauthoritycache.CertificateCache]
 // via [WithCache] to reuse certificates across requests, or leave it unset (nil cache) to
 // regenerate a certificate on every request.
 //
@@ -54,7 +54,7 @@ const (
 // Fields:
 //   - caCertificate (*x509.Certificate): the CA certificate used to sign issued certificates.
 //   - caCertificatePrivateKey (crypto.Signer): the private key corresponding to the CA certificate.
-//   - cache (hqgotlscache.CertificateCache): the cache of generated certificates, keyed by normalized hostname; nil disables caching.
+//   - cache (hqgotlsauthoritycache.CertificateCache): the cache of generated certificates, keyed by normalized hostname; nil disables caching.
 //   - cacheMaxAge (time.Duration): the maximum age of a cached certificate before it is re-issued.
 //   - ops (*operations): the cryptographic and filesystem operations to use; nil selects the production set.
 //   - inflightMutex (sync.Mutex): guards inflight.
@@ -63,7 +63,7 @@ type CertificateAuthority struct {
 	caCertificate           *x509.Certificate
 	caCertificatePrivateKey crypto.Signer
 
-	cache       hqgotlscache.CertificateCache
+	cache       hqgotlsauthoritycache.CertificateCache
 	cacheMaxAge time.Duration
 
 	ops *operations

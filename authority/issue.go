@@ -15,7 +15,7 @@ import (
 	"time"
 
 	hqgoerrors "github.com/hueristiq/hq-lib-errors-go"
-	hqgotlscache "github.com/hueristiq/hq-lib-tls-go/authority/cache"
+	hqgotlsauthoritycache "github.com/hueristiq/hq-lib-tls-go/authority/cache"
 )
 
 // GenerateTLSCertificate generates a new X.509 TLS certificate and its corresponding private key.
@@ -616,7 +616,7 @@ func (ca *CertificateAuthority) generateAndCacheTLSCertificate(host string) (cer
 	}
 
 	if ca.cache != nil {
-		if err = ca.cache.Set(host, &hqgotlscache.CertificateCacheEntry{
+		if err = ca.cache.Set(host, &hqgotlsauthoritycache.CertificateCacheEntry{
 			Certificate: certificate,
 			CreatedAt:   time.Now(),
 		}); err != nil {
@@ -630,7 +630,7 @@ func (ca *CertificateAuthority) generateAndCacheTLSCertificate(host string) (cer
 // isCacheEntryValid reports whether a cached certificate may still be served: the entry must have
 // been stored in the past (a future CreatedAt is never fresh), be younger than the configured
 // maximum age, and the certificate itself must not have expired.
-func (ca *CertificateAuthority) isCacheEntryValid(entry *hqgotlscache.CertificateCacheEntry) (valid bool) {
+func (ca *CertificateAuthority) isCacheEntryValid(entry *hqgotlsauthoritycache.CertificateCacheEntry) (valid bool) {
 	if entry.Certificate == nil || entry.Certificate.Leaf == nil {
 		return false
 	}

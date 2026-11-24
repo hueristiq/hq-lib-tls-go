@@ -6,7 +6,7 @@ import (
 	"time"
 
 	hqgoerrors "github.com/hueristiq/hq-lib-errors-go"
-	hqgotlscache "github.com/hueristiq/hq-lib-tls-go/authority/cache"
+	hqgotlsauthoritycache "github.com/hueristiq/hq-lib-tls-go/authority/cache"
 )
 
 // CAOptions configures the self-signed CA certificate and private key produced
@@ -277,13 +277,13 @@ func WithAllowedHosts(hosts ...string) (of TLSConfigMutator) {
 // certificate cache.
 //
 // Fields:
-//   - Cache (hqgotlscache.CertificateCache): the cache for generated
+//   - Cache (hqgotlsauthoritycache.CertificateCache): the cache for generated
 //     certificates; nil by default, meaning certificates are regenerated per
 //     request.
 //   - CacheMaxAge (time.Duration): the maximum age of a cached certificate
 //     before it is re-issued; defaults to 1 hour and must be positive.
 type Options struct {
-	Cache       hqgotlscache.CertificateCache
+	Cache       hqgotlsauthoritycache.CertificateCache
 	CacheMaxAge time.Duration
 }
 
@@ -315,8 +315,8 @@ func WithCacheMaxAge(maxAge time.Duration) (of OptionFunc) {
 // Caching is opt-in: when unset (nil), certificates are regenerated per request. The cache
 // stores certificates keyed by normalized hostname and is consulted by the SNI-driven
 // [CertificateAuthority.NewTLSConfig] path and [CertificateAuthority.TLSCertificate];
-// see [hqgotlscache.NewInMemory] for a ready-made implementation.
-func WithCache(c hqgotlscache.CertificateCache) (of OptionFunc) {
+// see [hqgotlsauthoritycache.NewInMemory] for a ready-made implementation.
+func WithCache(c hqgotlsauthoritycache.CertificateCache) (of OptionFunc) {
 	return func(opts *Options) {
 		opts.Cache = c
 	}

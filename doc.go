@@ -28,8 +28,9 @@
 //   - [certificate] — parse and analyze the certificates gathered by a probe:
 //     subject and issuer fields, validity, hostname coverage, digests, and
 //     validation against trust and revocation.
-//   - [fingerprint] — JA3, JA3S, and JARM TLS fingerprints computed from
-//     handshake message bytes supplied by the caller.
+//   - [fingerprint] — JA3 and JA3S TLS fingerprints computed from handshake
+//     message bytes supplied by the caller. JARM stays on [Client] because it
+//     uses the client's dialer and timeout.
 //   - [authority/cache] — the certificate storage port used by authority's
 //     dynamic per-host issuance.
 //
